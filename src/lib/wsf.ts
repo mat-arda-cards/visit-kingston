@@ -21,6 +21,13 @@ export const ED_KING_ROUTE_ID = 6;
 
 const SCHEDULE_BASE = "https://www.wsdot.wa.gov/ferries/api/schedule/rest";
 const TERMINALS_BASE = "https://www.wsdot.wa.gov/ferries/api/terminals/rest";
+const VESSELS_BASE = "https://www.wsdot.wa.gov/ferries/api/vessels/rest";
+
+/** Terminal coordinates for the live vessel map (verified against WSF GTFS). */
+export const TERMINAL_COORDS = {
+  edmonds: { lat: 47.8125, lng: -122.3829, name: "Edmonds" },
+  kingston: { lat: 47.7963, lng: -122.4965, name: "Kingston" },
+} as const;
 
 /** Unwrap WCF "/Date(1719936000000-0700)/" strings to ISO 8601. */
 function parseWsdotDate(raw: string): string {
@@ -142,6 +149,70 @@ interface WsfAlert {
   AlertFullTitle: string;
   AllRoutesFlag: boolean;
   AffectedRouteIDs: number[] | null;
+}
+
+interface WsfVessel {
+  VesselName: string;
+  Latitude: number | null;
+  Longitude: number | null;
+  Speed: number | null;
+  Heading: number | null;
+  InService: boolean;
+  AtDock: boolean;
+  DepartingTerminalID: number | null;
+  ArrivingTerminalID: number | null;
+  ArrivingTerminalName: string | null;
+  Eta: string | null;
+}
+
+export interface VesselPosition {
+  name: string;
+  lat: number;
+  lng: number;
+  /** knots */
+  speed: number;
+  /** compass degrees */
+  heading: number;
+  atDock: boolean;
+  inService: boolean;
+  headedTo?: string;
+  /** ISO 8601 arrival estimate */
+  eta?: string;
+}
+
+/**
+ * Live positions of the Edmonds–Kingston vessels (WSDOT VesselWatch data).
+ * Filters the fleet to boats whose current run touches terminal 8 or 12.
+ * Empty + live:false when no API key is set or the service is unreachable —
+ * the map then points visitors to WSDOT's own VesselWatch.
+ */
+export async function getVesselLocations(): Promise<{ vessels: VesselPosition[]; live: boolean }> {
+  const data = await wsfFetch<WsfVessel[]>(`${VESSELS_BASE}/vessellocations`, 10);
+  if (!data) return { vessels: [], live: false };
+
+  const routeTerminals: number[] = [TERMINAL_IDS.edmonds, TERMINAL_IDS.kingston];
+  const onRoute = data.filter(
+    (v) =>
+      v.Latitude != null &&
+      v.Longitude != null &&
+      (routeTerminals.includes(v.DepartingTerminalID ?? -1) ||
+        routeTerminals.includes(v.ArrivingTerminalID ?? -1)),
+  );
+
+  return {
+    vessels: onRoute.map((v) => ({
+      name: v.VesselName,
+      lat: v.Latitude as number,
+      lng: v.Longitude as number,
+      speed: v.Speed ?? 0,
+      heading: v.Heading ?? 0,
+      atDock: Boolean(v.AtDock),
+      inService: v.InService !== false,
+      headedTo: v.ArrivingTerminalName ?? undefined,
+      eta: v.Eta ? parseWsdotDate(v.Eta) : undefined,
+    })),
+    live: true,
+  };
 }
 
 /** Current WSF service alerts affecting the Edmonds–Kingston route. */

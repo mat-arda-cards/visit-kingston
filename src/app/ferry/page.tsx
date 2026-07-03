@@ -14,9 +14,16 @@ import {
   Section,
   mapDirectionsUrl,
 } from "@/components/ui";
-import { getRouteAlerts, getTerminalStatus, getTodaysSailings } from "@/lib/wsf";
+import {
+  getRouteAlerts,
+  getTerminalStatus,
+  getTodaysSailings,
+  getVesselLocations,
+} from "@/lib/wsf";
 import { FAST_FERRY_FACTS, getFastFerrySailings } from "@/lib/kitsap";
 import { FerryBoard } from "./ferry-board";
+import { FerryVesselMap } from "@/components/ferry-vessel-map";
+import { AtmQuickInfo } from "@/components/atm-quick-info";
 
 export const metadata: Metadata = { title: "Ferry" };
 
@@ -45,6 +52,7 @@ export default async function FerryPage() {
     getRouteAlerts(),
   ]);
   const fastFerry = getFastFerrySailings();
+  const vessels = await getVesselLocations();
   const initial = { carFerry, fastFerry, terminals: { kingston, edmonds }, alerts };
 
   return (
@@ -74,8 +82,19 @@ export default async function FerryPage() {
         </div>
       )}
 
+      <div className="mx-auto max-w-5xl px-4 pt-2">
+        <AtmQuickInfo />
+      </div>
+
       <Section title="Next boats" subtitle="Both routes, both directions. Updates every minute while you watch.">
         <FerryBoard initial={initial} serverNow={new Date().toISOString()} />
+      </Section>
+
+      <Section
+        title="Where are the boats right now?"
+        subtitle="Live positions of the Edmonds–Kingston ferries, like WSDOT's VesselWatch."
+      >
+        <FerryVesselMap initial={vessels} />
       </Section>
 
       <Section
