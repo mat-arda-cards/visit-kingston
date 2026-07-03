@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { EventCategory, EventItem } from "@/lib/types";
-import { events } from "@/lib/data/events";
+import { getEvents } from "@/lib/stores/event-store";
 import { formatPacificDate, formatPacificTime, todayPacific } from "@/lib/time";
 import {
   Badge,
@@ -14,7 +14,7 @@ import {
 
 // "This weekend" depends on today's date — re-render at most hourly so a
 // statically built page doesn't freeze on the build day.
-export const revalidate = 3600;
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Events",
@@ -129,7 +129,8 @@ function EventCard({ event }: { event: EventItem }) {
   );
 }
 
-export default function EventsPage() {
+export default async function EventsPage() {
+  const events = await getEvents();
   const today = todayPacific();
   const upcoming = events
     .filter((event) => dateOf(event.start) >= today)

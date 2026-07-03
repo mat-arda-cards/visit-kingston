@@ -6,14 +6,21 @@ with the Greater Kingston Chamber of Commerce and branded to match
 [explorekingstonwa.com](https://explorekingstonwa.com) (logo, palette, fonts,
 and photography live in `public/brand/`).
 
-## Admin & data (unlinked pages)
+## Portals
 
-- `/admin` — visitor insights: anonymous sessions/pageviews, coarse origin
-  regions, top pages, outbound-link taps, and the LTAC survey summary.
-- `/admin/hunts` — scavenger-hunt builder: create hunts/stops, upload a
-  reference photo per stop ("what the spot looks like"), review player photo
-  submissions with GPS-verified badges.
-- Both are **unauthenticated** — fine while local; add auth before deploying.
+- `/portal` — sign-in for businesses, nonprofits, and the Chamber. First run:
+  `/portal/setup` creates the admin account; admins mint invite codes at
+  `/admin/accounts` that link each account to its listings/orgs.
+- Businesses edit their listing, weekly hours (drives the live open-now
+  badges), and events; nonprofits manage volunteer shifts and get
+  deconfliction warnings before booking an event date.
+- `/portal/syndicate` — per-account feeds (JSON/iCal/embed) their own
+  websites can pull, plus copy-paste checklists for Google/Apple/Yelp/Bing
+  and social composers. The wired-API roadmap is in
+  [docs/SYNDICATION.md](docs/SYNDICATION.md).
+- `/admin` (admin accounts only) — visitor insights: origins, pages,
+  outbound taps, opt-in around-town location sample, LTAC survey summary.
+- `/admin/hunts` — scavenger-hunt builder and submission review.
 
 Live data comes from free public sources (WSDOT Ferries API, Kitsap Transit
 GTFS, NWS weather, NOAA tides); local content lives in typed seed files the

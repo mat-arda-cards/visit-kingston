@@ -4,7 +4,7 @@ import { getTodaysSailings } from "@/lib/wsf";
 import { getFastFerrySailings } from "@/lib/kitsap";
 import { getForecast } from "@/lib/weather";
 import { getTodaysTides } from "@/lib/tides";
-import { events } from "@/lib/data/events";
+import { getEvents } from "@/lib/stores/event-store";
 import { formatPacificDate, formatPacificTime, todayPacific } from "@/lib/time";
 import { Badge, Card, ExternalLink, Section } from "@/components/ui";
 import { VisitorSurvey } from "@/components/visitor-survey";
@@ -35,10 +35,11 @@ function nextDeparture(
 }
 
 export default async function Home() {
-  const [carFerry, forecast, tides] = await Promise.all([
+  const [carFerry, forecast, tides, events] = await Promise.all([
     getTodaysSailings(),
     getForecast(2),
     getTodaysTides(),
+    getEvents(),
   ]);
   const fastFerry = getFastFerrySailings();
 

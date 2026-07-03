@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { Charity, EventItem } from "@/lib/types";
-import { charities, volunteerNeeds } from "@/lib/data/charities";
-import { events } from "@/lib/data/events";
+import { getCharities, getVolunteerNeeds } from "@/lib/stores/charity-store";
+import { getEvents } from "@/lib/stores/event-store";
 import {
   PageHeader,
   Section,
@@ -22,8 +22,6 @@ export const metadata: Metadata = {
 const VOLUNTEER_KITSAP_URL = "https://unitedwaykitsap.galaxydigital.com/";
 const CHAMBER_EVENTS_URL = "https://business.kingstonchamber.com/events";
 
-const charityById = new Map(charities.map((c) => [c.id, c]));
-
 /** Honest v1 signup path: email the org if we have one, else their site, else the county portal. */
 function raiseHandHref(charity: Charity | undefined, needTitle: string): string {
   if (charity?.contactEmail) {
@@ -43,7 +41,15 @@ function pacificDateKey(iso: string): string {
   return pacificDay.format(new Date(iso));
 }
 
-export default function GiveBackPage() {
+export const revalidate = 60;
+
+export default async function GiveBackPage() {
+  const [charities, volunteerNeeds, events] = await Promise.all([
+    getCharities(),
+    getVolunteerNeeds(),
+    getEvents(),
+  ]);
+  const charityById = new Map(charities.map((c) => [c.id, c]));
   const today = todayPacific();
 
   const sortedNeeds = [...volunteerNeeds]

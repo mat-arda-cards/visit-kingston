@@ -8,7 +8,7 @@
 // before deploying publicly — see the callout at the bottom of the page.
 
 import type { Metadata } from "next";
-import { summarize, type AnalyticsSummary } from "@/lib/analytics-store";
+import { areaLabel, summarize, type AnalyticsSummary } from "@/lib/analytics-store";
 import { surveyStore } from "@/lib/survey-store";
 import { Badge, Callout, Card, PageHeader, Section } from "@/components/ui";
 
@@ -231,6 +231,52 @@ export default async function AdminPage() {
               Showing top {TOP_N} of {analytics.outboundLinks.length} links.
             </p>
           )}
+        </Card>
+      </Section>
+
+      <Section
+        title="Where visitors go around town"
+        subtitle="Opt-in location pings from the “what's open near me” feature, bucketed into named Kingston areas — never anything finer than about a block."
+      >
+        <Card>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-lg font-semibold text-sound-deep">
+              {analytics.geoPings} location {analytics.geoPings === 1 ? "ping" : "pings"}
+            </h3>
+            <Badge tone="teal">Opt-in, coarse</Badge>
+          </div>
+          {analytics.geoPingsByArea.length > 0 ? (
+            <ul className="mt-4 space-y-3">
+              {analytics.geoPingsByArea.map((row) => {
+                const max = analytics.geoPingsByArea[0].count;
+                const pct = max > 0 ? Math.max(4, Math.round((row.count / max) * 100)) : 0;
+                return (
+                  <li key={row.area}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm font-medium text-ink">{areaLabel(row.area)}</span>
+                      <span className="text-sm font-semibold tabular-nums text-sound-deep">
+                        {row.count}
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-sand">
+                      <div className="h-full rounded-full bg-tide" style={{ width: `${pct}%` }} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="mt-3">
+              <EmptyNote>
+                No location pings yet — they arrive when a visitor taps the near-me button on
+                the Eat &amp; Drink page and accepts the browser location prompt.
+              </EmptyNote>
+            </div>
+          )}
+          <p className="mt-4 text-xs italic text-ink-soft">
+            Pings are opt-in and coarse (rounded to about a block before storage), so treat
+            these counts as a sample of visitor movement — not a census.
+          </p>
         </Card>
       </Section>
 

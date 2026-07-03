@@ -135,6 +135,8 @@ export interface EventItem {
   url?: string;
   /** set for nonprofit events that appear in the charity portal too */
   charityId?: string;
+  /** portal ownership: the listing/org id whose account manages this event */
+  ownerId?: string;
 }
 
 export interface ItineraryStop {

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { Restaurant } from "@/lib/types";
-import { restaurants } from "@/lib/data/restaurants";
+import { getRestaurants } from "@/lib/stores/business-store";
 import {
   PageHeader,
   Section,
@@ -11,6 +11,8 @@ import {
   mapSearchUrl,
 } from "@/components/ui";
 import { OpenBadge, OrderTimingNote } from "@/components/open-badge";
+import { NearMe } from "@/components/near-me";
+import { LocalBusinessJsonLd } from "@/components/json-ld";
 
 export const metadata: Metadata = {
   title: "Eat & Drink",
@@ -76,6 +78,7 @@ function RestaurantCard({ r }: { r: Restaurant }) {
 
   return (
     <Card className="flex flex-col">
+      <LocalBusinessJsonLd restaurant={r} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h3 className="text-lg font-semibold text-sound-deep">{r.name}</h3>
         <p className="text-sm text-ink-soft">
@@ -145,7 +148,10 @@ function RestaurantCard({ r }: { r: Restaurant }) {
   );
 }
 
-export default function EatPage() {
+export const revalidate = 60;
+
+export default async function EatPage() {
+  const restaurants = await getRestaurants();
   const grouped = groups
     .map((g) => ({
       ...g,
@@ -165,6 +171,19 @@ export default function EatPage() {
         title="Eat & Drink"
         intro="Everything here is a walk from the ferry dock — two minutes to a crêpe, ten to the Village Green. Heads up: plenty of Kingston kitchens take orders by phone, not app. That's normal here."
       />
+
+      <Section>
+        <NearMe
+          places={restaurants.map((r) => ({
+            id: r.id,
+            name: r.name,
+            lat: r.lat,
+            lng: r.lng,
+            weeklyHours: r.weeklyHours,
+            walkMinutesFromFerry: r.walkMinutesFromFerry,
+          }))}
+        />
+      </Section>
 
       {grouped.map((g) => (
         <Section key={g.title} title={g.title} subtitle={g.subtitle}>

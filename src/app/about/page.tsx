@@ -66,6 +66,12 @@ export default function AboutPage() {
                   or overnight, nights stayed. The survey is optional; never tied to a person or
                   device.
                 </li>
+                <li>
+                  Device location, only when you tap a location feature (like &ldquo;what&apos;s
+                  open near me&rdquo; or a scavenger-hunt check-in) — always behind the
+                  browser&apos;s permission prompt, rounded to about a block before it&apos;s
+                  stored, and reported only as neighborhood-level counts.
+                </li>
                 <li>That&apos;s it. Really.</li>
               </ul>
             </div>
@@ -75,9 +81,10 @@ export default function AboutPage() {
                 <li>No accounts or sign-ins — nothing here needs one.</li>
                 <li>No cookies for tracking, no ad tech, and nothing is ever sold to anyone.</li>
                 <li>
-                  No precise location logging — we only ever see the rough region a connection
-                  comes from. GPS check-ins on the scavenger hunt happen on your phone, not our
-                  servers.
+                  No precise location logging, ever — outside the opt-in features above, we only
+                  see the rough region a connection comes from, and even opted-in pings are
+                  coarsened to about a block before anything is stored. Scavenger-hunt GPS
+                  check-ins happen on your phone, not our servers.
                 </li>
                 <li>Scavenger-hunt photos never leave your phone.</li>
               </ul>

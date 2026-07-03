@@ -11,17 +11,39 @@
 // "unknown"). Note: IP geolocation cannot reliably produce zip codes; the
 // anonymous survey (/api/survey) remains the only zip source.
 //
+// "geo-ping" events are the one exception where device coordinates arrive at
+// all, and only because the visitor tapped a location feature ("what's open
+// near me") and accepted the browser's permission prompt. Privacy invariants,
+// enforced HERE regardless of what the client sends:
+//   - coordinates are validated to Kitsap-ish bounds, else dropped silently;
+//   - they are rounded to 3 decimals (~100 m — about a block) before storage;
+//   - a named area is classified server-side; nothing finer is ever stored.
+//
 // This endpoint always answers { ok: true } — telemetry must never break or
 // slow down a visitor's session.
 
 import { NextRequest } from "next/server";
-import { saveEvent, type AnalyticsEvent, type AnalyticsGeo } from "@/lib/analytics-store";
+import {
+  classifyArea,
+  roundCoord,
+  saveEvent,
+  type AnalyticsEvent,
+  type AnalyticsGeo,
+} from "@/lib/analytics-store";
 
 const MAX_PATH = 200;
 const MAX_SESSION_ID = 64;
 const MAX_HREF = 500;
 const MAX_LABEL = 120;
 const MAX_GEO_FIELD = 80;
+
+// Kitsap-ish bounding box for geo-pings. Anything outside is dropped
+// silently — the feature is about movement around Kingston, and out-of-range
+// coordinates are either GPS glitches or someone poking at the API.
+const GEO_MIN_LAT = 47.5;
+const GEO_MAX_LAT = 48.1;
+const GEO_MIN_LNG = -123.0;
+const GEO_MAX_LNG = -122.2;
 
 function trunc(value: unknown, max: number): string | undefined {
   return typeof value === "string" && value.length > 0 ? value.slice(0, max) : undefined;
@@ -76,14 +98,46 @@ export async function POST(request: NextRequest) {
     const raw = await request.text();
     const body = JSON.parse(raw) as Record<string, unknown>;
 
-    const type = body.type === "outbound" ? "outbound" : body.type === "pageview" ? "pageview" : null;
-    const path = trunc(body.path, MAX_PATH);
+    const type =
+      body.type === "outbound"
+        ? "outbound"
+        : body.type === "pageview"
+          ? "pageview"
+          : body.type === "geo-ping"
+            ? "geo-ping"
+            : null;
+    // Geo-ping beacons are coordinates + session only; default their path so
+    // the shared validation below still applies to pageviews/outbound.
+    const path = trunc(body.path, MAX_PATH) ?? (type === "geo-ping" ? "/" : undefined);
     const sessionId = trunc(body.sessionId, MAX_SESSION_ID)?.replace(/[^A-Za-z0-9_-]/g, "");
 
     // Drop malformed events and anything from the admin dashboard itself
     // (the client tracker already skips /admin; this is defense in depth).
     if (!type || !path || !path.startsWith("/") || !sessionId || path.startsWith("/admin")) {
       return Response.json({ ok: true });
+    }
+
+    // Geo-pings: validate, then coarsen. Coordinates must be finite and
+    // within Kitsap-ish bounds or the event is dropped silently. Whatever
+    // precision the client sent, we round to 3 decimals (~100 m) and classify
+    // the named area server-side — nothing finer ever reaches the store.
+    let geoPing: Pick<AnalyticsEvent, "lat" | "lng" | "area"> | undefined;
+    if (type === "geo-ping") {
+      const lat = typeof body.lat === "number" ? body.lat : Number(body.lat);
+      const lng = typeof body.lng === "number" ? body.lng : Number(body.lng);
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        lat < GEO_MIN_LAT ||
+        lat > GEO_MAX_LAT ||
+        lng < GEO_MIN_LNG ||
+        lng > GEO_MAX_LNG
+      ) {
+        return Response.json({ ok: true });
+      }
+      const coarseLat = roundCoord(lat);
+      const coarseLng = roundCoord(lng);
+      geoPing = { lat: coarseLat, lng: coarseLng, area: classifyArea(coarseLat, coarseLng) };
     }
 
     const event: AnalyticsEvent = {
@@ -95,6 +149,7 @@ export async function POST(request: NextRequest) {
       ...(type === "outbound"
         ? { href: trunc(body.href, MAX_HREF), label: trunc(body.label, MAX_LABEL) }
         : {}),
+      ...(geoPing ?? {}),
     };
 
     await saveEvent(event);
