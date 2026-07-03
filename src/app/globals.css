@@ -1,26 +1,63 @@
 @import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "leaflet/dist/leaflet.css";
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Explore Kingston type system (explorekingstonwa.com)
+     - sans:    Roboto — body text
+     - display: Roboto Slab — headings (site's secondary heading face)
+     - nav:     Poppins — nav / uppercase UI labels
+     - script:  Satisfy — big script accents ("Explore Kingston" style), use sparingly */
+  --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-roboto-slab), var(--font-roboto), ui-serif, Georgia, serif;
+  --font-nav: var(--font-poppins), var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
+  --font-script: var(--font-satisfy), "Brush Script MT", cursive;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Explore Kingston palette — same token names, Chamber brand values.
+     Primary cyan #1E96C0 (logo sailboat), deep navy #324A6D (nav/secondary),
+     warm peach accent family, near-white page with #E4E4E0 warm-gray fills. */
+  --color-shell: #fbfcfd; /* page background — near-white, sits under the topo texture */
+  --color-sand: #e4e4e0; /* warm light gray — borders, subtle section fills */
+  --color-seaglass: #b7e0f2; /* pale brand-blue tint — light text on navy, tint fills */
+  --color-tide: #1e96c0; /* brand primary cyan-blue (logo sailboat) */
+  --color-tide-deep: #16758f; /* darker cyan — accessible link/text variant */
+  --color-sound: #324a6d; /* brand deep navy — secondary */
+  --color-sound-deep: #22334d; /* darker navy — footer, hero depths */
+  --color-coral: #c97940; /* warm CTA — deepened from brand peach #FFBC7D */
+  --color-coral-deep: #a85c28; /* hover + accessible text-on-white variant */
+  --color-ink: #20262e; /* near-black headings/body */
+  --color-ink-soft: #6b7683; /* muted body gray */
+  --color-fern: #4a7c59; /* PNW evergreen — success, open-now */
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-shell);
+  /* Subtle topographic contour texture from explorekingstonwa.com page backgrounds */
+  background-image: url("/brand/bg-topographical-texture.jpg");
+  background-size: 1100px auto;
+  background-repeat: repeat;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Explore Kingston topo texture on a white fill — for standout sections */
+.bg-topo {
+  background-color: #ffffff;
+  background-image: url("/brand/bg-topographical-texture.jpg");
+  background-size: 1100px auto;
+  background-repeat: repeat;
+}
+
+/* Room for the fixed mobile bottom nav */
+@media (max-width: 767px) {
+  body {
+    padding-bottom: 4.5rem;
+  }
 }

@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Explore Kingston (Visit Kingston app) 🛳️
 
-## Getting Started
+A community tourism web app for **Kingston, Washington** — ferry times, food,
+events, parking, itineraries, scavenger hunts, and a volunteer portal, built
+with the Greater Kingston Chamber of Commerce and branded to match
+[explorekingstonwa.com](https://explorekingstonwa.com) (logo, palette, fonts,
+and photography live in `public/brand/`).
 
-First, run the development server:
+## Admin & data (unlinked pages)
+
+- `/admin` — visitor insights: anonymous sessions/pageviews, coarse origin
+  regions, top pages, outbound-link taps, and the LTAC survey summary.
+- `/admin/hunts` — scavenger-hunt builder: create hunts/stops, upload a
+  reference photo per stop ("what the spot looks like"), review player photo
+  submissions with GPS-verified badges.
+- Both are **unauthenticated** — fine while local; add auth before deploying.
+
+Live data comes from free public sources (WSDOT Ferries API, Kitsap Transit
+GTFS, NWS weather, NOAA tides); local content lives in typed seed files the
+Chamber can edit. Every source is documented in
+[docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Live ferry data (sailings, drive-up space, wait notes, alerts) is enabled by
+the `WSDOT_API_KEY` in `.env.local` (already registered under
+matt.hager12@gmail.com; get a new free code at
+<https://wsdot.wa.gov/traffic/api/> if it ever needs rotating). Without the
+key the app falls back to bundled schedules, clearly labeled.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Edit the content
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+All local content is plain TypeScript the Chamber can edit without touching
+UI code — one file per domain in [src/lib/data/](src/lib/data/):
 
-## Learn More
+| File | What it feeds |
+|------|---------------|
+| `restaurants.ts` | Eat & Drink page |
+| `events.ts` | Events calendar + home page + deconfliction view |
+| `parking.ts`, `atms.ts` | Parking & ATMs page |
+| `lodging.ts` | Stay page |
+| `itineraries.ts` | Itinerary pages |
+| `charities.ts` | Give Back page (orgs + volunteer needs) |
+| `hunts.ts` | Scavenger hunts |
+| `webcams.ts` | Webcam grid |
+| `ferry-fallback.ts` | Car-ferry schedule shown when no API key is set |
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy (free)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Vercel Hobby tier fits this project:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npx vercel
+```
 
-## Deploy on Vercel
+Set `WSDOT_API_KEY` in the Vercel project settings. One caveat: the
+LTAC visitor-survey store writes to a local file, which doesn't persist on
+serverless — wire `src/lib/survey-store.ts` to a database (Vercel Postgres /
+Supabase, both have free tiers) before relying on survey numbers. The
+interface is already in place.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Docs
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) — what we're building and why
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the code is organized
+- [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) — every data source, verified,
+  with gotchas and Chamber action items
+
+## Stack
+
+Next.js 16 (App Router) · TypeScript · Tailwind 4 · zero paid services
