@@ -549,3 +549,23 @@ Count, Representative Survey, Informal Survey, Structured Estimate.
   marine zone forecast for crossing conditions; a curated POI/attractions inventory for
   itineraries (no single API covers it — Chamber-curated, like everything else that works
   in this town).
+
+---
+
+## Hosting on explorekingstonwa.com (verified 2026-07-02)
+
+The Chamber site is WordPress 7 + Elementor (Hello Elementor theme) on a
+NameHero VPS (165.140.69.20, vps42664.nodevm.com), which also serves the
+domain's DNS **and email** (MX + SPF point at the same box) — so do not move
+nameservers.
+
+**Recommended path when ready to go live:** in the NameHero cPanel Zone
+Editor add `CNAME app.explorekingstonwa.com → cname.vercel-dns.com`, then add
+`app.explorekingstonwa.com` to the Vercel project. Zero impact on the
+WordPress site, apex, or email. If the app ever replaces the WP site
+entirely, swap the apex A record to Vercel (76.76.21.21) at cutover time.
+
+**Bonus discovery:** explorekingstonwa.com runs The Events Calendar with a
+live REST API (`/wp-json/tribe/events/v1/`) — a machine-readable event feed
+the Chamber already controls. Strong candidate for automating the app's
+events data (replaces the seed file in `src/lib/data/events.ts`).
