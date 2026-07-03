@@ -13,6 +13,7 @@ import {
 import { OpenBadge, OrderTimingNote } from "@/components/open-badge";
 import { NearMe } from "@/components/near-me";
 import { LocalBusinessJsonLd } from "@/components/json-ld";
+import { FeatureMap } from "@/components/feature-map";
 
 export const metadata: Metadata = {
   title: "Eat & Drink",
@@ -167,6 +168,14 @@ export default async function EatPage() {
             walkMinutesFromFerry: r.walkMinutesFromFerry,
           }))}
         />
+      </Section>
+
+      <Section title="The food map">
+        <p className="mb-4 text-ink-soft">
+          Every kitchen and bar in town, pinned — tap a marker for the walk time
+          from the ferry.
+        </p>
+        <FeatureMap view="food-drink" height="420px" />
       </Section>
 
       {grouped.map((g) => (

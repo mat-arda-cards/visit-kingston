@@ -69,6 +69,11 @@ export default async function PortalPage() {
         title: "Parking map editor",
         blurb: "Drag pins and lot shapes to match reality; mark them field-verified.",
       },
+      {
+        href: "/admin/maps",
+        title: "Map builder",
+        blurb: "Create map views and drop markers, trails, and areas onto them.",
+      },
     );
   }
 
