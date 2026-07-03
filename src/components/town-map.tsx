@@ -276,6 +276,14 @@ export function TownMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const boundaryBoundsRef = useRef<LatLngBounds | null>(null);
   const [selected, setSelected] = useState<SelectedSpot | null>(null);
+  // On touch devices the map starts non-draggable so the page can scroll past
+  // it; a tap unlocks panning. Always false on desktop (fine pointer).
+  const [locked, setLocked] = useState(false);
+
+  function unlock() {
+    mapRef.current?.dragging.enable();
+    setLocked(false);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -291,6 +299,19 @@ export function TownMap({
         scrollWheelZoom: false, // don't hijack page scroll; pinch/±-buttons still zoom
       });
       mapRef.current = map;
+
+      // Touch devices: don't let a full-width map eat vertical page swipes.
+      // Panning is disabled until the visitor taps to activate. Desktop
+      // (fine pointer) stays fully interactive.
+      const coarse =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(pointer: coarse)").matches;
+      if (coarse) {
+        map.dragging.disable();
+        setLocked(true);
+      } else {
+        setLocked(false);
+      }
 
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -453,13 +474,27 @@ export function TownMap({
           Whole area
         </button>
       </div>
-      <div
-        ref={containerRef}
-        style={{ height }}
-        className="relative z-0 w-full overflow-hidden rounded-2xl border border-sand"
-        role="region"
-        aria-label="Map of Kingston street parking rules, lots, and ATMs"
-      />
+      <div className="relative">
+        <div
+          ref={containerRef}
+          style={{ height }}
+          className="relative z-0 w-full overflow-hidden rounded-2xl border border-sand"
+          role="region"
+          aria-label="Map of Kingston street parking rules, lots, and ATMs"
+        />
+        {locked && (
+          <button
+            type="button"
+            onClick={unlock}
+            className="absolute inset-0 z-[450] flex items-end justify-center rounded-2xl bg-transparent pb-4"
+            aria-label="Tap to interact with the map"
+          >
+            <span className="rounded-full bg-sound-deep/85 px-4 py-2 text-sm font-semibold text-white shadow">
+              Tap to explore the map
+            </span>
+          </button>
+        )}
+      </div>
       {EMBED_KEY && selected && (
         <div className="mt-3 overflow-hidden rounded-2xl border border-sand">
           <div className="flex items-center justify-between bg-white px-4 py-2">

@@ -81,7 +81,15 @@ export interface ResolvedMapView {
   view: MapView;
   features: MapFeature[];
   builtins: {
-    restaurants?: { id: string; name: string; lat: number; lng: number; walkMinutesFromFerry: number }[];
+    restaurants?: {
+      id: string;
+      name: string;
+      lat: number;
+      lng: number;
+      walkMinutesFromFerry: number;
+      /** MARKER_CATEGORIES key chosen server-side from cuisine/tags. */
+      category: string;
+    }[];
     atms?: { id: string; name: string; lat: number; lng: number; open24h: boolean }[];
     parkingZones?: {
       id: string;

@@ -201,6 +201,14 @@ export function FeatureMap({
   const [data, setData] = useState<ResolvedMapView | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [legend, setLegend] = useState<LegendEntry[]>([]);
+  // On touch devices the map starts non-draggable so the page can scroll past
+  // it; a tap unlocks panning. Always false on desktop (fine pointer).
+  const [locked, setLocked] = useState(false);
+
+  function unlock() {
+    mapRef.current?.dragging.enable();
+    setLocked(false);
+  }
 
   // Fetch the resolved view whenever `view` changes.
   useEffect(() => {
@@ -245,6 +253,23 @@ export function FeatureMap({
       });
       mapRef.current = map;
 
+      // On touch devices a full-width map otherwise eats the page's vertical
+      // swipes ("scroll trap"): disable panning until the visitor taps to
+      // activate. Desktop is untouched (fine-pointer → stays interactive).
+      const coarse =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(pointer: coarse)").matches;
+      if (coarse) {
+        map.dragging.disable();
+        setLocked(true);
+      } else {
+        setLocked(false);
+      }
+
+      // Collect content coordinates so the view auto-frames what it actually
+      // shows (the configured center/zoom is only a fallback).
+      const pts: [number, number][] = [];
+
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution:
@@ -265,6 +290,7 @@ export function FeatureMap({
           L.marker(f.point, { icon })
             .addTo(map)
             .bindPopup(featurePopupHtml(f), { maxWidth: 240 });
+          pts.push(f.point);
           addLegend({
             key: `cat-${cat.key}`,
             label: cat.label,
@@ -277,12 +303,14 @@ export function FeatureMap({
           L.polyline(f.path, { color, weight: 4, opacity: 0.85 })
             .addTo(map)
             .bindPopup(featurePopupHtml(f), { maxWidth: 240 });
+          pts.push(...f.path);
           addLegend({ key: "kind-line", label: "Route", color, shape: "line" });
         } else if (f.kind === "trail" && f.path) {
           const color = f.color || TRAIL_COLOR;
           L.polyline(f.path, { color, weight: 4, opacity: 0.9, dashArray: "6 6" })
             .addTo(map)
             .bindPopup(featurePopupHtml(f), { maxWidth: 240 });
+          pts.push(...f.path);
           addLegend({ key: "kind-trail", label: "Trail", color, shape: "dash" });
         } else if (f.kind === "area" && f.polygon) {
           const color = f.color || AREA_COLOR;
@@ -294,28 +322,30 @@ export function FeatureMap({
           })
             .addTo(map)
             .bindPopup(featurePopupHtml(f), { maxWidth: 240 });
+          pts.push(...f.polygon);
           addLegend({ key: "kind-area", label: "Area", color, shape: "swatch" });
         }
       }
 
-      // ---- built-ins: restaurants ----
-      const foodCat = markerCategory("food");
+      // ---- built-ins: restaurants (category-aware pins) ----
       for (const r of data.builtins.restaurants ?? []) {
+        const cat = markerCategory(r.category);
         const icon = L.divIcon({
           className: "feature-pin",
-          html: markerIconHtml(foodCat.emoji, foodCat.color),
+          html: markerIconHtml(cat.emoji, cat.color),
           iconSize: [0, 0],
           popupAnchor: [0, -30],
         });
         L.marker([r.lat, r.lng], { icon })
           .addTo(map)
           .bindPopup(restaurantPopupHtml(r), { maxWidth: 240 });
+        pts.push([r.lat, r.lng]);
         addLegend({
-          key: "builtin-restaurant",
-          label: "Food & drink",
-          color: foodCat.color,
+          key: `builtin-restaurant-${cat.key}`,
+          label: cat.label,
+          color: cat.color,
           shape: "pin",
-          emoji: foodCat.emoji,
+          emoji: cat.emoji,
         });
       }
 
@@ -331,6 +361,7 @@ export function FeatureMap({
           .addTo(map)
           .bindTooltip(`💵 ${a.name}`, { direction: "top", offset: [0, -6] })
           .bindPopup(atmPopupHtml(a), { maxWidth: 240 });
+        pts.push([a.lat, a.lng]);
         addLegend({ key: "builtin-atm", label: "ATM / cash", color: ATM_COLOR, shape: "dot" });
       }
 
@@ -361,12 +392,27 @@ export function FeatureMap({
             .addTo(map)
             .bindPopup(popup, { maxWidth: 240 });
         }
+        pts.push(z.center);
         addLegend({
           key: `parking-${z.rule}`,
           label: PARKING_RULE_LABELS[z.rule] ?? z.rule,
           color,
           shape: "swatch",
         });
+      }
+
+      // Auto-frame to the content we just drew, so a view fits what it shows
+      // instead of an out-of-date center/zoom. Skipped when:
+      //  - the view carries the wide street overlay (its center/zoom is tuned), or
+      //  - the content is spread wide (e.g. a lighthouse 13 km north): a lone
+      //    far pin would zoom the whole map out and bury downtown, so we keep
+      //    the configured center/zoom and let the visitor pan to the outlier.
+      if (!data.builtins.streets && pts.length > 0) {
+        const bounds = L.latLngBounds(pts);
+        const spanKm = bounds.getNorthWest().distanceTo(bounds.getSouthEast()) / 1000;
+        if (spanKm <= 4) {
+          map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
+        }
       }
 
       // ---- built-ins: streets (fetched here) ----
@@ -466,6 +512,18 @@ export function FeatureMap({
           <div className="absolute inset-0 z-[400] flex items-center justify-center rounded-2xl border border-sand bg-shell text-sm text-ink-soft">
             Map unavailable.
           </div>
+        )}
+        {status === "ready" && locked && (
+          <button
+            type="button"
+            onClick={unlock}
+            className="absolute inset-0 z-[450] flex items-end justify-center rounded-2xl bg-transparent pb-4"
+            aria-label="Tap to interact with the map"
+          >
+            <span className="rounded-full bg-sound-deep/85 px-4 py-2 text-sm font-semibold text-white shadow">
+              Tap to explore the map
+            </span>
+          </button>
         )}
       </div>
       {status === "ready" && legend.length > 0 && <MapLegend entries={legend} />}
