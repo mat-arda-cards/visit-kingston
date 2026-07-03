@@ -1,23 +1,27 @@
-// In-process rate limiter for the auth write endpoints (login, first-run
-// setup, invite redeem). Guards scrypt password hashes and invite codes
-// against brute-force / enumeration by capping attempts per key per window.
+// Rate limiter for the auth write endpoints (login, first-run setup, invite
+// redeem). Guards scrypt password hashes and invite codes against
+// brute-force / enumeration by capping attempts per key per window.
 //
 // ┌──────────────────────────────────────────────────────────────────────┐
-// │ IMPORTANT — this is PER-INSTANCE memory.                               │
+// │ TWO BACKENDS, ONE SEAM.                                                 │
 // │                                                                        │
-// │ The window state lives in a module-level Map in THIS process. On a     │
-// │ single persistent-disk server (Render/Fly/Railway/VPS with one         │
-// │ instance) that is exactly right and needs nothing else.                │
+// │ • Upstash Redis (when UPSTASH_REDIS_REST_URL is set): a SHARED sliding │
+// │   window that limits correctly across replicas and serverless lambdas. │
+// │   This is the path used on Vercel.                                     │
 // │                                                                        │
-// │ It will NOT limit across replicas or serverless lambdas: each          │
-// │ instance/invocation keeps its own counters, so N instances multiply    │
-// │ the effective limit by N (and short-lived lambdas reset it every       │
-// │ cold start). When this app moves to Vercel or scales past one          │
-// │ instance, back this with a shared store (Upstash Redis, or the         │
-// │ platform's KV) — keep this file's function signatures identical and    │
-// │ swap only the Map read/write for a Redis sorted-set / INCR+EXPIRE.     │
-// │ This module is the clean seam for that swap; callers never change.     │
+// │ • In-process Map (fallback, no Upstash env): PER-INSTANCE memory. On a  │
+// │   single persistent-disk server (Render/Fly/Railway/VPS with one       │
+// │   instance) that is exactly right. It will NOT limit across replicas   │
+// │   or short-lived lambdas — each keeps its own counters — so it is only  │
+// │   the local-dev / single-instance fallback.                            │
+// │                                                                        │
+// │ checkRateLimit is async; both branches are awaitable behind it. The    │
+// │ exported function signatures and RateLimitResult shape are identical   │
+// │ across backends, so callers never change.                              │
 // └──────────────────────────────────────────────────────────────────────┘
+
+import { Ratelimit, type Duration } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
 /** Recent attempt timestamps (ms) per key. Pruned lazily on each check. */
 const hits = new Map<string, number[]>();
@@ -50,19 +54,60 @@ export interface RateLimitResult {
   retryAfterSeconds: number;
 }
 
+/** True when Upstash Redis env is configured (Vercel / multi-instance). */
+function hasUpstash(): boolean {
+  return !!process.env.UPSTASH_REDIS_REST_URL;
+}
+
+// One shared Redis client and a cache of Ratelimit instances. Building a
+// Ratelimit is cheap but not free, and enabling its ephemeral cache only pays
+// off when the instance outlives a single request — so we memoize per window.
+let redis: Redis | undefined;
+const limiters = new Map<string, Ratelimit>();
+
+function ratelimiterFor(limit: number, windowMs: number): Ratelimit {
+  const cacheKey = `${limit}:${windowMs}`;
+  let rl = limiters.get(cacheKey);
+  if (!rl) {
+    redis ??= Redis.fromEnv();
+    // slidingWindow to match the in-memory algorithm. Express the window in ms
+    // so an arbitrary per-call override maps exactly; the default 60_000ms is
+    // equivalent to the "60 s" default window.
+    const window = `${windowMs} ms` as Duration;
+    rl = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(limit, window),
+      // Namespace so these keys can't collide with anything else in the DB.
+      prefix: "rl",
+    });
+    limiters.set(cacheKey, rl);
+  }
+  return rl;
+}
+
+async function checkUpstash(
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<RateLimitResult> {
+  const { success, reset } = await ratelimiterFor(limit, windowMs).limit(key);
+  if (success) return { ok: true, retryAfterSeconds: 0 };
+  return {
+    ok: false,
+    retryAfterSeconds: Math.max(1, Math.ceil((reset - Date.now()) / 1000)),
+  };
+}
+
 /**
- * Record an attempt for `key` and report whether it is within the limit.
- *
- * Sliding window: we keep the timestamps of attempts inside the last
+ * In-process sliding window: keep the timestamps of attempts inside the last
  * `windowMs` and allow up to `limit` of them. The current attempt counts
  * toward the limit — i.e. the (limit + 1)-th attempt in a window is rejected.
  */
-export function checkRateLimit(
+function checkInMemory(
   key: string,
-  opts?: { limit?: number; windowMs?: number },
+  limit: number,
+  windowMs: number,
 ): RateLimitResult {
-  const limit = opts?.limit ?? DEFAULT_LIMIT;
-  const windowMs = opts?.windowMs ?? DEFAULT_WINDOW_MS;
   const now = Date.now();
   const windowStart = now - windowMs;
 
@@ -88,6 +133,23 @@ export function checkRateLimit(
   recent.push(now);
   hits.set(key, recent);
   return { ok: true, retryAfterSeconds: 0 };
+}
+
+/**
+ * Record an attempt for `key` and report whether it is within the limit.
+ * Uses shared Upstash Redis when configured, otherwise an in-process Map.
+ */
+export async function checkRateLimit(
+  key: string,
+  opts?: { limit?: number; windowMs?: number },
+): Promise<RateLimitResult> {
+  const limit = opts?.limit ?? DEFAULT_LIMIT;
+  const windowMs = opts?.windowMs ?? DEFAULT_WINDOW_MS;
+
+  if (hasUpstash()) {
+    return checkUpstash(key, limit, windowMs);
+  }
+  return checkInMemory(key, limit, windowMs);
 }
 
 /**

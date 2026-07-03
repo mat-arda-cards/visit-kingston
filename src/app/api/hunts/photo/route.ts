@@ -5,13 +5,17 @@
 // extensions only, resolved inside .data/hunts). Local-only app — no auth;
 // see the note in /api/hunts/route.ts.
 
-import { NextRequest } from "next/server";
-import { readPhoto } from "@/lib/hunt-store";
+import { NextRequest, NextResponse } from "next/server";
+import { isBlobUrl, readPhoto } from "@/lib/hunt-store";
 
 export async function GET(request: NextRequest) {
   const relPath = request.nextUrl.searchParams.get("p");
   if (!relPath) return new Response("Missing ?p", { status: 400 });
 
+  // Prod: the stored value is a full Vercel Blob URL — redirect to the CDN.
+  if (isBlobUrl(relPath)) return NextResponse.redirect(relPath, 302);
+
+  // Legacy / local dev: stream from the filesystem (path strictly sanitized).
   const photo = await readPhoto(relPath);
   if (!photo) return new Response("Not found", { status: 404 });
 

@@ -20,6 +20,9 @@ import path from "path";
 import { dataPath } from "./data-dir";
 import { hunts as seedHunts } from "@/lib/data/hunts";
 import type { Hunt, HuntStop } from "@/lib/types";
+import { hasDb } from "@/lib/db";
+import { hasBlob, putImage } from "@/lib/blob-store";
+import { readOverlay, writeOverlayRecord, readMerged } from "@/lib/stores/json-store";
 
 // ---------------------------------------------------------------------------
 // Types (extend the domain model locally — types.ts stays untouched)
@@ -35,6 +38,9 @@ export type StoredHunt = Omit<Hunt, "stops"> & { stops: StoredHuntStop[] };
 export type AdminHunt = StoredHunt & { source: "seed" | "custom" };
 
 export interface HuntSubmission {
+  /** Stable id. Present on DB-backed rows (overlay key); optional on legacy
+   *  filesystem rows written before ids were assigned. */
+  id?: string;
   /** ISO 8601 */
   ts: string;
   huntId: string;
@@ -54,6 +60,10 @@ export interface HuntSubmission {
 const DATA_ROOT = dataPath("hunts");
 const CUSTOM_FILE = path.join(DATA_ROOT, "custom-hunts.json");
 const SUBMISSIONS_FILE = path.join(DATA_ROOT, "submissions.jsonl");
+
+// json-store overlay collection names used on the DB path.
+const CUSTOM_STORE = "custom-hunts";
+const SUBMISSIONS_STORE = "hunt-submissions";
 
 export const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // ~8 MB
 
@@ -103,6 +113,12 @@ export function isSafeId(id: unknown): id is string {
   return typeof id === "string" && ID_RE.test(id);
 }
 
+/** True when a stored photo value is a full https URL (a Vercel Blob URL) rather
+ *  than a .data/hunts-relative path. Blob URLs are served by redirect, not fs. */
+export function isBlobUrl(value: unknown): boolean {
+  return typeof value === "string" && value.startsWith("https://");
+}
+
 export function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371000;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
@@ -114,6 +130,11 @@ export function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: 
 }
 
 async function readCustomHunts(): Promise<StoredHunt[]> {
+  if (hasDb()) {
+    // Overlay rows for this store ARE the custom hunts (seed lives in git).
+    const overlay = await readOverlay<StoredHunt>(CUSTOM_STORE);
+    return overlay.filter((h) => !h._deleted).map(({ _deleted, ...rest }) => rest as StoredHunt);
+  }
   try {
     const raw = await readFile(CUSTOM_FILE, "utf8");
     const parsed = JSON.parse(raw);
@@ -126,6 +147,20 @@ async function readCustomHunts(): Promise<StoredHunt[]> {
 async function writeCustomHunts(hunts: StoredHunt[]): Promise<void> {
   await mkdir(DATA_ROOT, { recursive: true });
   await writeFile(CUSTOM_FILE, JSON.stringify(hunts, null, 2) + "\n", "utf8");
+}
+
+/** Upsert a single custom hunt. DB path writes one overlay record; fs path
+ *  rewrites the whole custom-hunts.json array (matching legacy behavior). */
+async function putCustomHunt(record: StoredHunt): Promise<void> {
+  if (hasDb()) {
+    await writeOverlayRecord<StoredHunt>(CUSTOM_STORE, record);
+    return;
+  }
+  const custom = await readCustomHunts();
+  const idx = custom.findIndex((h) => h.id === record.id);
+  if (idx >= 0) custom[idx] = record;
+  else custom.push(record);
+  await writeCustomHunts(custom);
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +192,14 @@ export async function getHuntById(id: string): Promise<AdminHunt | undefined> {
 }
 
 export async function listSubmissions(huntId?: string): Promise<HuntSubmission[]> {
+  if (hasDb()) {
+    // Each submission is one overlay record (id-keyed); no seed submissions.
+    const subs = await readMerged<HuntSubmission & { id: string }>(SUBMISSIONS_STORE, []);
+    const filtered = huntId ? subs.filter((s) => s.huntId === huntId) : subs;
+    // ts ascending in insertion order isn't guaranteed by the overlay query, so
+    // sort by timestamp; newest first (matches the fs reverse() semantics).
+    return filtered.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+  }
   let lines: string[] = [];
   try {
     lines = (await readFile(SUBMISSIONS_FILE, "utf8")).split("\n").filter(Boolean);
@@ -215,19 +258,18 @@ export async function saveHunt(hunt: StoredHunt): Promise<StoredHunt> {
         radiusMeters: stop.radiusMeters,
         photoPrompt: stop.photoPrompt,
         funFact: stop.funFact,
-        // only accept paths our own code shape produces
-        ...(referencePhoto && getPhotoAbsolutePath(referencePhoto) && referencePhoto.startsWith("refs/")
+        // only accept values our own code shape produces: a full blob URL, or
+        // a .data/hunts-relative "refs/…" path that resolves safely.
+        ...(referencePhoto &&
+        (isBlobUrl(referencePhoto) ||
+          (getPhotoAbsolutePath(referencePhoto) && referencePhoto.startsWith("refs/")))
           ? { referencePhoto }
           : {}),
       };
     }),
   };
 
-  const custom = await readCustomHunts();
-  const idx = custom.findIndex((h) => h.id === hunt.id);
-  if (idx >= 0) custom[idx] = toSave;
-  else custom.push(toSave);
-  await writeCustomHunts(custom);
+  await putCustomHunt(toSave);
   return toSave;
 }
 
@@ -249,20 +291,37 @@ export async function saveReferencePhoto(
   const stop = hunt.stops.find((s) => s.id === stopId);
   if (!stop) throw new Error("stop not found");
 
-  const relPath = `refs/${huntId}-${stopId}.${ext}`;
-  const absPath = path.join(DATA_ROOT, "refs", `${huntId}-${stopId}.${ext}`);
-  await mkdir(path.dirname(absPath), { recursive: true });
-  await writeFile(absPath, data);
+  // The value stored on the record: a full https blob URL (prod) or a
+  // .data/hunts-relative path (local dev). Both are consumed identically by
+  // photoUrl() → /api/hunts/photo, which redirects the former and streams the
+  // latter.
+  let stored: string;
+  if (hasBlob()) {
+    // sha-of-content is not needed here (ref photos are keyed by hunt+stop);
+    // addRandomSuffix in putImage keeps replacements from serving a stale copy.
+    stored = await putImage(
+      `hunts/refs/${huntId}-${stopId}.${ext}`,
+      Buffer.from(data),
+      EXT_CONTENT_TYPES[ext],
+    );
+  } else {
+    const relPath = `refs/${huntId}-${stopId}.${ext}`;
+    const absPath = path.join(DATA_ROOT, "refs", `${huntId}-${stopId}.${ext}`);
+    await mkdir(path.dirname(absPath), { recursive: true });
+    await writeFile(absPath, data);
 
-  // Drop a stale reference in another format (e.g. old .png replaced by .jpg).
-  if (stop.referencePhoto && stop.referencePhoto !== relPath) {
-    const stale = getPhotoAbsolutePath(stop.referencePhoto);
-    if (stale) await unlink(stale).catch(() => {});
+    // Drop a stale reference in another format (e.g. old .png replaced by .jpg).
+    // Only meaningful for fs-relative values; blob URLs aren't unlinkable here.
+    if (stop.referencePhoto && stop.referencePhoto !== relPath && !isBlobUrl(stop.referencePhoto)) {
+      const stale = getPhotoAbsolutePath(stop.referencePhoto);
+      if (stale) await unlink(stale).catch(() => {});
+    }
+    stored = relPath;
   }
 
   const custom = await readCustomHunts();
-  const idx = custom.findIndex((h) => h.id === huntId);
-  const plainHunt: StoredHunt = {
+  const existing = custom.find((h) => h.id === huntId);
+  const record: StoredHunt = existing ?? {
     id: hunt.id,
     slug: hunt.slug,
     title: hunt.title,
@@ -271,13 +330,10 @@ export async function saveReferencePhoto(
     durationMinutes: hunt.durationMinutes,
     stops: hunt.stops,
   };
-  const record: StoredHunt = idx >= 0 ? custom[idx] : plainHunt;
-  record.stops = record.stops.map((s) => (s.id === stopId ? { ...s, referencePhoto: relPath } : s));
-  if (idx >= 0) custom[idx] = record;
-  else custom.push(record);
-  await writeCustomHunts(custom);
+  record.stops = record.stops.map((s) => (s.id === stopId ? { ...s, referencePhoto: stored } : s));
+  await putCustomHunt(record);
 
-  return relPath;
+  return stored;
 }
 
 /**
@@ -304,23 +360,45 @@ export async function saveSubmission(input: {
   const distance = hasCoords ? haversineMeters(lat, lng, stop.lat, stop.lng) : undefined;
   const verified = distance !== undefined && distance <= stop.radiusMeters;
 
-  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const relPath = `photos/${huntId}/${stopId}/${fileName}`;
-  const absPath = path.join(DATA_ROOT, "photos", huntId, stopId, fileName);
-  await mkdir(path.dirname(absPath), { recursive: true });
-  await writeFile(absPath, photo);
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const fileName = `${id}.${ext}`;
+
+  // Store the photo bytes: blob URL (prod) or .data/hunts-relative path (dev).
+  let photoPath: string;
+  if (hasBlob()) {
+    photoPath = await putImage(
+      `hunts/photos/${huntId}/${stopId}/${fileName}`,
+      Buffer.from(photo),
+      EXT_CONTENT_TYPES[ext],
+    );
+  } else {
+    const relPath = `photos/${huntId}/${stopId}/${fileName}`;
+    const absPath = path.join(DATA_ROOT, "photos", huntId, stopId, fileName);
+    await mkdir(path.dirname(absPath), { recursive: true });
+    await writeFile(absPath, photo);
+    photoPath = relPath;
+  }
 
   const submission: HuntSubmission = {
+    id,
     ts: new Date().toISOString(),
     huntId,
     stopId,
-    photoPath: relPath,
+    photoPath,
     ...(hasCoords ? { lat, lng } : {}),
     ...(distance !== undefined ? { distanceMeters: Math.round(distance) } : {}),
     verified,
   };
-  await mkdir(DATA_ROOT, { recursive: true });
-  await appendFile(SUBMISSIONS_FILE, JSON.stringify(submission) + "\n", "utf8");
+
+  if (hasDb()) {
+    await writeOverlayRecord<HuntSubmission & { id: string }>(SUBMISSIONS_STORE, {
+      ...submission,
+      id,
+    });
+  } else {
+    await mkdir(DATA_ROOT, { recursive: true });
+    await appendFile(SUBMISSIONS_FILE, JSON.stringify(submission) + "\n", "utf8");
+  }
   return submission;
 }
 

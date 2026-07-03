@@ -11,7 +11,7 @@ function tooMany(retryAfterSeconds: number): NextResponse {
 
 export async function POST(request: NextRequest) {
   // Rate-limit by client IP so no single source can brute-force scrypt hashes.
-  const ipLimit = checkRateLimit(clientKey(request, "login"));
+  const ipLimit = await checkRateLimit(clientKey(request, "login"));
   if (!ipLimit.ok) return tooMany(ipLimit.retryAfterSeconds);
 
   let body: { email?: string; password?: string };
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
   // Also rate-limit per submitted account so a single targeted email can't be
   // ground down from many IPs. Normalize to match findUserByEmail's lookup.
-  const emailLimit = checkRateLimit("login:" + body.email.trim().toLowerCase());
+  const emailLimit = await checkRateLimit("login:" + body.email.trim().toLowerCase());
   if (!emailLimit.ok) return tooMany(emailLimit.retryAfterSeconds);
 
   const user = await findUserByEmail(body.email);

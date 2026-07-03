@@ -11,7 +11,7 @@ function tooMany(retryAfterSeconds: number): NextResponse {
 
 export async function POST(request: NextRequest) {
   // Rate-limit by client IP so invite codes can't be enumerated from one source.
-  const ipLimit = checkRateLimit(clientKey(request, "redeem"));
+  const ipLimit = await checkRateLimit(clientKey(request, "redeem"));
   if (!ipLimit.ok) return tooMany(ipLimit.retryAfterSeconds);
 
   let body: { code?: string; email?: string; name?: string; password?: string };
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
   // Also limit per submitted code so a specific code can't be guessed across
   // many IPs. Match redeemInvite's lookup, which trims the code.
-  const codeLimit = checkRateLimit("redeem:" + body.code.trim());
+  const codeLimit = await checkRateLimit("redeem:" + body.code.trim());
   if (!codeLimit.ok) return tooMany(codeLimit.retryAfterSeconds);
   try {
     const user = await redeemInvite(body.code.trim(), {

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:setup": "psql \"$DATABASE_URL\" -f db/schema.sql",
+    "db:migrate": "node --env-file=.env.local scripts/migrate-to-db.mjs"
   },
   "dependencies": {
     "@geoman-io/leaflet-geoman-free": "^2.20.0",

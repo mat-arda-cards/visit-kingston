@@ -38,16 +38,28 @@ Phase 1 is genuinely production-capable for the Chamber's scale once the
 grade" — the file store is single-writer and fine for a one-admin Chamber
 (see ARCHITECTURE.md §9).
 
-### Phase 2 — Vercel, later
+### Phase 2 — Vercel (current)
 
 Vercel (and any serverless platform) has **no persistent filesystem**: writes
-land on an ephemeral instance and vanish on the next invocation. Before the
-app can run there, every store behind `data-dir.ts` must be reimplemented
-against a database + object storage. The good news, by design: `data-dir.ts`
-is the migration seam. The modules that call `dataPath()` are the *complete*
-set to swap; nothing above them (routes, components, domain types) changes.
+land on an ephemeral instance and vanish on the next invocation. So every store
+behind `data-dir.ts` runs against a database + object storage instead. This is
+built: `data-dir.ts` is the migration seam, and each store now branches on
+`hasDb()` / `hasBlob()` — with the cloud env vars set it uses the SQL/Blob path,
+without them it uses the original `.data/` filesystem path (so `npm run dev`
+still works on disk). Nothing above the stores (routes, components, domain
+types) changed. **The concrete deploy steps are in [§g](#g-phase-2-deploy-to-vercel).**
 
-**The swap points — enumerate and what each needs:**
+**Which store maps to which service (the built layout):**
+
+| Store / data | Backend | Where |
+|---|---|---|
+| auth (users, invites), portal overlays, custom hunts, hunt submissions, map views/features | **overlay table** | Neon Postgres |
+| analytics events, LTAC survey responses | **append tables** (`analytics_event`, `survey_response`) | Neon Postgres |
+| hunt reference + player photos, map-feature images | **object storage** | Vercel Blob |
+| auth login / invite-redeem rate limiting | **shared counter** | Upstash Redis |
+
+The per-module swap points (what each file's seam targets) — unchanged since the
+plan was written:
 
 | Module | Today (file) | Phase-2 target | Notes |
 |---|---|---|---|
@@ -256,3 +268,98 @@ public deployment:
 When all of the above hold, Phase 1 is a real production deployment for the
 Chamber. The remaining work — the DB/blob migration and shared rate limiting —
 is Phase 2, gated on the move to Vercel, not on launch.
+
+---
+
+## g. Phase 2: deploy to Vercel
+
+The store layer is now cloud-aware (see [§a Phase 2](#phase-2--vercel-current)):
+Neon Postgres for structured state, Vercel Blob for uploaded images, Upstash
+Redis for the shared rate limiter. Each store auto-detects its backend from the
+presence of an env var, so the whole switch is "provision the three stores, set
+their env vars, deploy." OPERATIONS.md is the day-2 runbook; this is the
+one-time stand-up.
+
+### Steps
+
+1. **Push to GitHub** — done. Vercel deploys from the repo.
+2. **Import the repo.** Go to **[vercel.com/new](https://vercel.com/new)**,
+   pick the repo. Vercel auto-detects Next.js; keep the defaults (build
+   `next build`, no root-directory change). Don't deploy yet — add the stores
+   and env first, or the first build ships with the filesystem fallback and no
+   persistence.
+3. **Provision the three stores** from the Vercel project's **Storage** tab
+   (a.k.a. Marketplace). Installing each integration **injects its env vars
+   into the project automatically** — you don't hand-copy secrets:
+   - **Neon** → creates a Postgres database and injects **`DATABASE_URL`**
+     (use the **pooled** connection string — the host contains `-pooler`; the
+     `@neondatabase/serverless` HTTP driver wants it). Backs the overlay table
+     + the two append tables.
+   - **Upstash** (Redis) → injects **`UPSTASH_REDIS_REST_URL`** and
+     **`UPSTASH_REDIS_REST_TOKEN`**. Backs the shared rate limiter.
+   - **Vercel Blob** → create a Blob store (**Storage → Create → Blob**);
+     injects **`BLOB_READ_WRITE_TOKEN`**. Backs hunt/reference/map images. Make
+     sure it's a **public** store so image URLs serve directly from the CDN.
+4. **Set the remaining env vars** (Project → Settings → Environment Variables),
+   for the **Production** environment:
+   - `AUTH_SECRET` — a **fresh** value, `openssl rand -hex 32`. Never reuse the
+     dev secret; changing it later logs everyone out (OPERATIONS.md
+     troubleshooting).
+   - `WSDOT_API_KEY` — WSDOT Ferries access code (OPERATIONS.md §1 /
+     DATA_SOURCES.md §1). Without it the ferry board shows the bundled
+     schedule, labeled not-live.
+   - `NEXT_PUBLIC_GMAPS_EMBED_KEY` — **build-time** (inlined into the client
+     bundle), so it must be set **before** the build that ships it, not just at
+     runtime. Restrict the key by HTTP referrer and cap its quota.
+   - **Do NOT set `DATA_DIR`.** It's the Phase-1 filesystem switch; on Vercel
+     there is no persistent disk, and leaving it unset is what routes the
+     stores to Neon/Blob.
+5. **Deploy.** Trigger the deploy (redeploy if you imported before adding the
+   stores, so the build picks up the env). Vercel builds and serves the app.
+6. **Create the schema, then migrate data (if any).**
+   - Schema: `ensureSchema()` in `src/lib/db.ts` **creates the tables lazily on
+     the first request**, so the first hit to any store self-initializes the
+     database — nothing to run. To create them up front instead, run
+     **`npm run db:setup`** (`psql "$DATABASE_URL" -f db/schema.sql`) against
+     the Neon connection string; if `psql` isn't installed, just let
+     `ensureSchema()` do it, or paste `db/schema.sql` into the Neon SQL editor.
+   - Existing local data: to carry over the current `.data/` tree (accounts,
+     overlays, hunts, analytics, survey, images), pull the production env and
+     run the migration once:
+     ```bash
+     vercel env pull .env.production.local   # writes DATABASE_URL + BLOB token
+     node --env-file=.env.production.local scripts/migrate-to-db.mjs
+     ```
+     (`npm run db:migrate` runs the same script but reads `.env.local`.) It
+     upserts overlay rows, appends analytics/survey rows, and uploads images to
+     Blob (rewriting each record's URL field to the blob URL). It refuses to
+     run without `DATABASE_URL`; the overlay upserts are idempotent, but the
+     append tables are **run-once** (it skips them if they already have rows —
+     `--force` to override). A fresh Chamber deploy with no local data can skip
+     this entirely.
+7. **Verify `/api/health`.** Hit `https://<project>.vercel.app/api/health`;
+   confirm it returns `200 {ok:true,...}`. Then smoke-test a write path: create
+   the admin at `/portal/setup` (see [§e](#e-first-run-in-production)) and
+   confirm it persists across a redeploy — that proves Neon, not an ephemeral
+   disk, is holding state.
+8. **Add the domain.** In Vercel **Project → Settings → Domains**, add
+   `app.explorekingstonwa.com`. Vercel shows a CNAME target; add it in the
+   **NameHero cPanel → Zone Editor** as a single **CNAME**, exactly as in
+   [§c](#c-domain--dns):
+   ```
+   app.explorekingstonwa.com   CNAME   <vercel's target, e.g. cname.vercel-dns.com>
+   ```
+   **Never move nameservers** — the NameHero box also serves the WordPress
+   site, the zone's DNS, and Chamber email (MX/SPF). One CNAME leaves all three
+   untouched. Swap the apex only at a full cutover later.
+
+### Cost caveat
+
+Vercel's **Hobby** plan is **non-commercial only**. A Chamber-of-Commerce app
+promoting member businesses is commercial use, so this likely needs **Vercel
+Pro (~$20/mo)** to be within terms — budget for it. Neon, Upstash, and Blob all
+have free tiers that comfortably cover Kingston's scale; watch their usage
+dashboards as traffic grows.
+
+Day-2 operations (backups of Neon/Blob, env-var reference, rotating secrets,
+troubleshooting) live in [OPERATIONS.md](OPERATIONS.md).

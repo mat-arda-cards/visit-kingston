@@ -10,6 +10,7 @@ import type { MapFeature, MapView } from "../map/types";
 import { mapViews as viewSeed } from "../data/map-views";
 import { mapFeatures as featureSeed } from "../data/map-features";
 import { readMerged, writeOverlayRecord } from "./json-store";
+import { hasBlob, putImage } from "../blob-store";
 
 const VIEW_STORE = "map-views";
 const FEATURE_STORE = "map-features";
@@ -50,21 +51,45 @@ export async function deleteMapFeature(id: string): Promise<void> {
 
 // ---------- feature images ----------
 
-/** Save an uploaded image, returning its relative name for imageUrl. */
+const EXT_CONTENT_TYPES: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+/** True when a stored image value is a full https URL (a Vercel Blob URL)
+ *  rather than a bare sha1 name under .data/map/images. */
+export function isBlobUrl(value: unknown): boolean {
+  return typeof value === "string" && value.startsWith("https://");
+}
+
+/**
+ * Save an uploaded image and return the value stored on the feature.
+ * Prod (Blob): a full https CDN URL. Local dev (fs): a bare "<sha1>.<ext>" name.
+ * Either value is later wrapped by callers as /api/map/image?p=<value>, which
+ * redirects the URL form and streams the fs form.
+ */
 export async function saveFeatureImage(bytes: Buffer, ext: string): Promise<string> {
-  await mkdir(IMAGE_DIR, { recursive: true });
-  // Deterministic-enough unique name without Date.now()/random (unavailable
-  // in some contexts): hash the content.
+  // Content hash: doubles as a stable, dedupe-friendly name/key.
   const { createHash } = await import("crypto");
   const hash = createHash("sha1").update(bytes).digest("hex").slice(0, 16);
   const safeExt = /^(jpg|jpeg|png|webp|gif)$/i.test(ext) ? ext.toLowerCase() : "jpg";
   const name = `${hash}.${safeExt}`;
+  if (hasBlob()) {
+    // Keep the sha1 in the key so identical content lands on a stable path.
+    return putImage(`map/images/${name}`, bytes, EXT_CONTENT_TYPES[safeExt] ?? "image/jpeg");
+  }
+  await mkdir(IMAGE_DIR, { recursive: true });
   await writeFile(path.join(IMAGE_DIR, name), bytes);
   return name;
 }
 
-/** Resolve a stored image name to an absolute path, rejecting traversal. */
+/** Resolve a stored image name to an absolute path, rejecting traversal.
+ *  Returns null for full https URLs (those are served by redirect, not fs). */
 export function featureImagePath(name: string): string | null {
+  if (isBlobUrl(name)) return null;
   if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) return null;
   if (!/^[a-f0-9]{8,}\.(jpg|jpeg|png|webp|gif)$/i.test(name)) return null;
   return path.join(IMAGE_DIR, name);

@@ -8,6 +8,7 @@
 import { appendFile, mkdir, readFile } from "fs/promises";
 import path from "path";
 import { dataPath } from "./data-dir";
+import { hasDb, db, ensureSchema } from "./db";
 import type { SurveyResponse } from "./types";
 
 export interface SurveyStore {
@@ -27,18 +28,34 @@ const DATA_FILE = dataPath("ltac-responses.jsonl");
 
 class FileSurveyStore implements SurveyStore {
   async save(response: SurveyResponse): Promise<void> {
+    if (hasDb()) {
+      await ensureSchema();
+      const sql = db();
+      await sql`INSERT INTO survey_response (response) VALUES (${JSON.stringify(response)}::jsonb)`;
+      return;
+    }
     await mkdir(path.dirname(DATA_FILE), { recursive: true });
     await appendFile(DATA_FILE, JSON.stringify(response) + "\n", "utf8");
   }
 
   async summarize(): Promise<SurveySummary> {
-    let lines: string[] = [];
-    try {
-      lines = (await readFile(DATA_FILE, "utf8")).split("\n").filter(Boolean);
-    } catch {
-      // no responses yet
+    let rows: SurveyResponse[];
+    if (hasDb()) {
+      await ensureSchema();
+      const sql = db();
+      const result = (await sql`SELECT response FROM survey_response`) as {
+        response: SurveyResponse;
+      }[];
+      rows = result.map((r) => r.response);
+    } else {
+      let lines: string[] = [];
+      try {
+        lines = (await readFile(DATA_FILE, "utf8")).split("\n").filter(Boolean);
+      } catch {
+        // no responses yet
+      }
+      rows = lines.map((l) => JSON.parse(l) as SurveyResponse);
     }
-    const rows = lines.map((l) => JSON.parse(l) as SurveyResponse);
     const byDistance: Record<string, number> = {};
     for (const r of rows) {
       byDistance[r.distanceBand] = (byDistance[r.distanceBand] ?? 0) + 1;

@@ -8,7 +8,7 @@ import { checkRateLimit, clientKey } from "@/lib/rate-limit";
 export async function POST(request: NextRequest) {
   // Low limit: this endpoint is only ever hit a handful of times, once, during
   // first-run bootstrap. Cap it hard before touching the user store.
-  const limit = checkRateLimit(clientKey(request, "setup"), { limit: 5 });
+  const limit = await checkRateLimit(clientKey(request, "setup"), { limit: 5 });
   if (!limit.ok) {
     return NextResponse.json(
       { error: "too many attempts, please try again later" },

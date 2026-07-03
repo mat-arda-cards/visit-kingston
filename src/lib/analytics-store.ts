@@ -27,6 +27,7 @@ import { appendFile, mkdir, readFile } from "fs/promises";
 import path from "path";
 
 import { dataPath } from "./data-dir";
+import { hasDb, db, ensureSchema } from "./db";
 export type GeoSource = "vercel-headers" | "dev-local" | "unknown";
 
 /** Coarse, connection-derived geography. Never an address or coordinates. */
@@ -189,6 +190,12 @@ export interface AnalyticsSummary {
 const DATA_FILE = dataPath("analytics", "events.jsonl");
 
 export async function saveEvent(event: AnalyticsEvent): Promise<void> {
+  if (hasDb()) {
+    await ensureSchema();
+    const sql = db();
+    await sql`INSERT INTO analytics_event (event) VALUES (${JSON.stringify(event)}::jsonb)`;
+    return;
+  }
   await mkdir(path.dirname(DATA_FILE), { recursive: true });
   await appendFile(DATA_FILE, JSON.stringify(event) + "\n", "utf8");
 }
@@ -205,19 +212,27 @@ function pacificDay(ts: string): string {
 }
 
 export async function summarize(): Promise<AnalyticsSummary> {
-  let lines: string[] = [];
-  try {
-    lines = (await readFile(DATA_FILE, "utf8")).split("\n").filter(Boolean);
-  } catch {
-    // no events yet
-  }
-
   const events: AnalyticsEvent[] = [];
-  for (const line of lines) {
+
+  if (hasDb()) {
+    await ensureSchema();
+    const sql = db();
+    const rows = (await sql`SELECT event FROM analytics_event`) as { event: AnalyticsEvent }[];
+    for (const row of rows) events.push(row.event);
+  } else {
+    let lines: string[] = [];
     try {
-      events.push(JSON.parse(line) as AnalyticsEvent);
+      lines = (await readFile(DATA_FILE, "utf8")).split("\n").filter(Boolean);
     } catch {
-      // skip a corrupt line rather than losing the whole summary
+      // no events yet
+    }
+
+    for (const line of lines) {
+      try {
+        events.push(JSON.parse(line) as AnalyticsEvent);
+      } catch {
+        // skip a corrupt line rather than losing the whole summary
+      }
     }
   }
 
