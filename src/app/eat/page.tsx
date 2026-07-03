@@ -22,43 +22,24 @@ export const metadata: Metadata = {
 
 const CHAMBER_EMAIL = "info@kingstonchamber.com";
 
-// Grouped by vibe; every restaurant id appears exactly once. Anything added
-// to the data file later but not listed here falls into "More around town".
-const groups: { title: string; subtitle: string; ids: string[] }[] = [
+// Grouped by REAL walk time from the ferry (computed from verified
+// coordinates), so the section headings can never contradict the per-card
+// walk badges. `maxWalk` is the upper bound of each band, in minutes.
+const bands: { title: string; subtitle: string; maxWalk: number }[] = [
   {
     title: "Right off the boat",
-    subtitle:
-      "Sit-down meals within about four minutes of the terminal — doable even between sailings.",
-    ids: [
-      "sourdough-willys",
-      "saucy-sailor",
-      "kingston-ale-house",
-      "dvine-lounge",
-      "filling-station",
-    ],
+    subtitle: "Two or three minutes from the walk-off ramp — doable between sailings.",
+    maxWalk: 3,
   },
   {
-    title: "Worth the stroll",
-    subtitle:
-      "Five to ten minutes up the hill or over toward the Village Green.",
-    ids: [
-      "nirvana-indian-nepali",
-      "grub-hut",
-      "los-tres-compadres",
-      "argensol-kitchen",
-      "da-poke-shop",
-      "westside-pizza",
-    ],
+    title: "A quick stroll",
+    subtitle: "A few blocks up Highway 104 or one street over.",
+    maxWalk: 6,
   },
   {
-    title: "Coffee & quick bites",
-    subtitle: "Fast fuel before a sailing — all of these move quickly.",
-    ids: ["jaime-les-crepes", "kingston-coffee-company", "cup-and-muffin", "borrowed-kitchen-bakery"],
-  },
-  {
-    title: "Drinks",
-    subtitle: "Local pours for the evening — one taproom, one jazz cellar.",
-    ids: ["friends-and-neighbors-brewing", "cellar-cat"],
+    title: "Up toward the Village Green",
+    subtitle: "Seven to twelve minutes up the hill — worth the walk.",
+    maxWalk: Infinity,
   },
 ];
 
@@ -152,17 +133,20 @@ export const revalidate = 60;
 
 export default async function EatPage() {
   const restaurants = await getRestaurants();
-  const grouped = groups
-    .map((g) => ({
-      ...g,
-      items: g.ids
-        .map((id) => restaurants.find((r) => r.id === id))
-        .filter((r): r is Restaurant => r !== undefined),
-    }))
+  const sorted = [...restaurants].sort(
+    (a, b) => a.walkMinutesFromFerry - b.walkMinutesFromFerry || a.name.localeCompare(b.name),
+  );
+  const grouped = bands
+    .map((band, i) => {
+      const min = i === 0 ? 0 : bands[i - 1].maxWalk + 1;
+      return {
+        ...band,
+        items: sorted.filter(
+          (r) => r.walkMinutesFromFerry >= min && r.walkMinutesFromFerry <= band.maxWalk,
+        ),
+      };
+    })
     .filter((g) => g.items.length > 0);
-
-  const listedIds = new Set(groups.flatMap((g) => g.ids));
-  const leftovers = restaurants.filter((r) => !listedIds.has(r.id));
 
   return (
     <>
@@ -194,16 +178,6 @@ export default async function EatPage() {
           </div>
         </Section>
       ))}
-
-      {leftovers.length > 0 && (
-        <Section title="More around town">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {leftovers.map((r) => (
-              <RestaurantCard key={r.id} r={r} />
-            ))}
-          </div>
-        </Section>
-      )}
 
       <Section>
         <Callout title="Menus and hours change — trust the kitchen, not the internet.">

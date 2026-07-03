@@ -123,8 +123,8 @@ export default async function FerryPage() {
               <li>
                 <strong className="text-ink">Summer line rules:</strong> when it&rsquo;s busy, the
                 holding line runs up SR 104 and a boarding-pass (&ldquo;tally&rdquo;) system runs
-                daily 8 am–8 pm. Take a pass from the dispenser at Barber Cutoff Rd and stay in
-                line — leaving voids it.
+                daily 8 am–8 pm. Watch for the flashing sign at Barber Cutoff Rd, then take a pass
+                at the dispenser near Lindvog Rd and stay in line — leaving voids it.
               </li>
             </ul>
           </Card>
@@ -184,24 +184,31 @@ export default async function FerryPage() {
         <Callout title="Money on the boat">
           <p>
             Cards (Visa, Mastercard, Amex, Discover) work at the WSF tollbooths, but every
-            credit/debit purchase carries a 3% surcharge (since March 2026). Cash dodges the
-            surcharge — at staffed booths only; the self-serve kiosks don&rsquo;t take cash. ORCA
-            works too, surcharge-free if you loaded it outside WSF. Good To Go! is highway tolling
-            only — it will not pay for a ferry.
+            credit/debit purchase carries a 3% surcharge (since March 2026). The self-serve ticket
+            kiosks are card-only. A pre-loaded ORCA card skips the surcharge (as long as you didn&rsquo;t
+            load it at a WSF facility). Best of all: walking on from Kingston is free — fares are
+            collected at Edmonds — so most walk-on visitors pay nothing at the dock. Good To Go! is
+            highway tolling only — it will not pay for a ferry.
+          </p>
+          <p className="mt-2">
+            Driving on? During peak periods (daily 8 am–8 pm in season, plus weekends and holidays)
+            you&rsquo;ll need a vehicle boarding pass from the SR 104 holding line — take one at the
+            dispenser near Lindvog Rd, and don&rsquo;t leave the line or it&rsquo;s void. Walk-ons,
+            cyclists, and motorcycles are exempt.
           </p>
           <p className="mt-2">
             On the fast ferry: tap a card or phone, use ORCA, or bring exact cash — the crew
             carries no change.
           </p>
           <p className="mt-2">
-            Need bills? See{" "}
+            Need bills, or the full cash-and-boarding rundown? See the{" "}
             <Link
               href="/parking#atms"
               className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2 hover:text-sound"
             >
-              ATMs in Kingston
-            </Link>{" "}
-            — the closest 24-hour bank ATM is a short walk from the dock. Full payment details:{" "}
+              cash &amp; boarding guide for Kingston
+            </Link>
+            . Full payment details:{" "}
             <ExternalLink href={WSF_TICKETS_URL}>WSF ticket information</ExternalLink>.
           </p>
         </Callout>

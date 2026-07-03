@@ -24,7 +24,10 @@
 //   verified; add it once confirmed with the Chamber.
 // - The Kingston Coffee Company is newly opened — hours reported but not
 //   two-source verified, so it deliberately has no weeklyHours (no badge).
-// - lat/lng are block-level approximations for map pins, not survey data.
+// - lat/lng are OSM building-POI coordinates (verified 2026-07-02); walk
+//   times are recomputed from the ferry walk-off point (47.7966,-122.4958)
+//   via street-distance estimate, calibrated so the near-ferry cluster ≈ 2 min
+//   and Kingston Center ≈ 11 min. Recompute after any coordinate change.
 
 import type { Restaurant } from "../types";
 
@@ -53,8 +56,8 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 1,
     tags: ["quick", "breakfast", "kid-friendly", "sweet"],
-    lat: 47.7964,
-    lng: -122.4965,
+    lat: 47.797284,
+    lng: -122.496922,
     walkMinutesFromFerry: 2,
   },
   {
@@ -82,8 +85,8 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["pizza", "kid-friendly", "takeout"],
-    lat: 47.7965,
-    lng: -122.4968,
+    lat: 47.797078,
+    lng: -122.49732,
     walkMinutesFromFerry: 2,
   },
   {
@@ -111,9 +114,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["quick", "takeout", "vegan-options", "gluten-free"],
-    lat: 47.7961,
-    lng: -122.4973,
-    walkMinutesFromFerry: 3,
+    lat: 47.797422,
+    lng: -122.497025,
+    walkMinutesFromFerry: 2,
   },
   {
     id: "kingston-ale-house",
@@ -139,9 +142,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["pub", "beer", "seafood"],
-    lat: 47.7959,
-    lng: -122.4981,
-    walkMinutesFromFerry: 3,
+    lat: 47.7974,
+    lng: -122.497571,
+    walkMinutesFromFerry: 2,
   },
   {
     id: "dvine-lounge",
@@ -165,9 +168,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["wine", "brunch", "date-night"],
-    lat: 47.7959,
-    lng: -122.4982,
-    walkMinutesFromFerry: 3,
+    lat: 47.797325,
+    lng: -122.497501,
+    walkMinutesFromFerry: 2,
   },
   {
     id: "cellar-cat",
@@ -190,9 +193,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["wine", "live-music", "21-plus"],
-    lat: 47.7962,
-    lng: -122.4974,
-    walkMinutesFromFerry: 3,
+    lat: 47.797164,
+    lng: -122.497368,
+    walkMinutesFromFerry: 2,
   },
   {
     id: "filling-station",
@@ -218,8 +221,8 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["bar", "casual"],
-    lat: 47.7957,
-    lng: -122.4986,
+    lat: 47.798363,
+    lng: -122.497663,
     walkMinutesFromFerry: 4,
   },
   {
@@ -244,9 +247,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 1,
     tags: ["quick", "burgers", "kid-friendly", "takeout"],
-    lat: 47.7953,
-    lng: -122.4993,
-    walkMinutesFromFerry: 5,
+    lat: 47.801068,
+    lng: -122.498914,
+    walkMinutesFromFerry: 8,
   },
   {
     id: "nirvana-indian-nepali",
@@ -273,9 +276,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["takeout", "delivery", "vegetarian-friendly"],
-    lat: 47.7955,
-    lng: -122.499,
-    walkMinutesFromFerry: 5,
+    lat: 47.800406,
+    lng: -122.499498,
+    walkMinutesFromFerry: 8,
   },
   {
     id: "friends-and-neighbors-brewing",
@@ -298,9 +301,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["beer", "taproom", "dog-friendly", "kid-friendly"],
-    lat: 47.7951,
-    lng: -122.4996,
-    walkMinutesFromFerry: 6,
+    lat: 47.801083,
+    lng: -122.500159,
+    walkMinutesFromFerry: 9,
   },
   {
     id: "los-tres-compadres",
@@ -327,9 +330,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["kid-friendly", "takeout"],
-    lat: 47.795,
-    lng: -122.4997,
-    walkMinutesFromFerry: 6,
+    lat: 47.8026,
+    lng: -122.5009,
+    walkMinutesFromFerry: 12,
   },
   {
     id: "borrowed-kitchen-bakery",
@@ -352,9 +355,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 1,
     tags: ["bakery", "coffee", "breakfast", "quick"],
-    lat: 47.795,
-    lng: -122.4998,
-    walkMinutesFromFerry: 6,
+    lat: 47.802521,
+    lng: -122.500713,
+    walkMinutesFromFerry: 11,
   },
   {
     id: "cup-and-muffin",
@@ -377,9 +380,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 1,
     tags: ["coffee", "quick", "drive-thru", "breakfast"],
-    lat: 47.7949,
-    lng: -122.4999,
-    walkMinutesFromFerry: 6,
+    lat: 47.801178,
+    lng: -122.500423,
+    walkMinutesFromFerry: 9,
   },
   {
     id: "argensol-kitchen",
@@ -402,9 +405,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["takeout"],
-    lat: 47.7985,
-    lng: -122.4968,
-    walkMinutesFromFerry: 9,
+    lat: 47.797405,
+    lng: -122.496218,
+    walkMinutesFromFerry: 2,
   },
   {
     id: "da-poke-shop",
@@ -428,9 +431,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["quick", "takeout"],
-    lat: 47.7996,
-    lng: -122.4983,
-    walkMinutesFromFerry: 10,
+    lat: 47.798126,
+    lng: -122.498225,
+    walkMinutesFromFerry: 4,
   },
   {
     id: "westside-pizza",
@@ -456,9 +459,9 @@ export const restaurants: Restaurant[] = [
     hoursVerified: VERIFIED,
     priceLevel: 2,
     tags: ["pizza", "delivery", "kid-friendly"],
-    lat: 47.7997,
-    lng: -122.4981,
-    walkMinutesFromFerry: 10,
+    lat: 47.797595,
+    lng: -122.496784,
+    walkMinutesFromFerry: 2,
   },
   {
     id: "kingston-coffee-company",
@@ -472,8 +475,8 @@ export const restaurants: Restaurant[] = [
     hours: "Daily 9:30 am–4:30 pm (new spot — confirm)",
     priceLevel: 1,
     tags: ["coffee", "quick", "new"],
-    lat: 47.7967,
-    lng: -122.498,
-    walkMinutesFromFerry: 3,
+    lat: 47.798289,
+    lng: -122.498292,
+    walkMinutesFromFerry: 4,
   },
 ];
