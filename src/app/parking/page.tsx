@@ -9,14 +9,14 @@ import {
   mapSearchUrl,
   mapDirectionsUrl,
 } from "@/components/ui";
-import { TownMap, MapLegend } from "@/components/town-map";
-import { RULE_LABELS, type MapZone, type ParkingRule } from "@/lib/data/parking";
-import { getParkingZones } from "@/lib/stores/parking-store";
+import { FeatureMap } from "@/components/feature-map";
+import { resolveMapView } from "@/lib/map/resolve";
 import { atms, atmMeta } from "@/lib/data/atms";
 import { FERRY_PAYMENT, BOARDING_PASS, SOURCES } from "@/lib/data/ferry-info";
 
-// Zones come from the parking-zones store (seed + Chamber-admin overlay), so
-// corrections made at /admin/map go live here within a minute.
+// The parking map is the Chamber's live "parking-cash" map-CMS view, built and
+// edited in the portal. resolveMapView() renders the draft directly (it does
+// not gate on `published`); revalidate keeps portal edits fresh here.
 export const revalidate = 60;
 
 export const metadata: Metadata = {
@@ -26,177 +26,57 @@ export const metadata: Metadata = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Parking card helpers                                                */
-/* ------------------------------------------------------------------ */
-
-const RULE_BADGE_TONE: Record<ParkingRule, "green" | "teal" | "navy" | "sand" | "coral"> = {
-  "free-2hr": "green",
-  "free-unrestricted": "teal",
-  paid: "navy",
-  "park-and-ride-24h": "sand",
-  prohibited: "coral",
-  "load-zone": "sand",
-  permit: "coral",
-};
-
-const GROUPS: { rule: ParkingRule; title: string; blurb: string }[] = [
-  {
-    rule: "free-2hr",
-    title: "Free — 2-hour limit",
-    blurb:
-      "Fine for lunch and a stroll; wrong for ferry trips. The 2-hour limits are enforced.",
-  },
-  {
-    rule: "free-unrestricted",
-    title: "Free street parking — no time limit",
-    blurb:
-      "The closest truly unlimited free parking to the dock. Obey posted signs — they always win.",
-  },
-  {
-    rule: "paid",
-    title: "Paid lots",
-    blurb: "The reliable options for ferry travel and longer stays.",
-  },
-  {
-    rule: "park-and-ride-24h",
-    title: "Free park & rides — 24 hours max",
-    blurb:
-      "Free with bus connections to the ferry, but capped at 24 hours — day trips, not getaways.",
-  },
-];
-
-function overnightText(zone: MapZone): string {
-  if (zone.overnight === "yes")
-    return "Overnight: OK — but check out the details first.";
-  if (zone.overnight === "no") return "Overnight: no.";
-  return zone.id.startsWith("port-")
-    ? "Overnight: call the Port office first — 360-297-3545."
-    : "Overnight: confirm on-site first.";
-}
-
-function ZoneCard({ zone }: { zone: MapZone }) {
-  return (
-    <Card className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <h4 className="text-lg font-semibold text-sound-deep">{zone.name}</h4>
-        <div className="flex flex-wrap gap-1.5">
-          <Badge tone={RULE_BADGE_TONE[zone.rule]}>{RULE_LABELS[zone.rule]}</Badge>
-          {zone.confidence === "unverified" && (
-            <Badge tone="coral">Unverified — field-check</Badge>
-          )}
-        </div>
-      </div>
-
-      <p className="text-sm text-ink">{zone.summary}</p>
-      <p className="text-sm font-semibold text-ink">{overnightText(zone)}</p>
-      <p className="text-sm text-ink-soft">{zone.details}</p>
-
-      {zone.confidence !== "verified" && zone.sourceNote && (
-        <p className="text-xs italic text-ink-soft">{zone.sourceNote}</p>
-      )}
-
-      <div className="mt-auto flex flex-wrap gap-x-4 gap-y-1 pt-1 text-sm">
-        <ExternalLink
-          href={mapDirectionsUrl(`${zone.center[0]},${zone.center[1]}`, "driving")}
-        >
-          Directions
-        </ExternalLink>
-        <ExternalLink href={mapSearchUrl(`${zone.center[0]},${zone.center[1]}`)}>
-          Open in Maps
-        </ExternalLink>
-        {zone.sourceUrl && <ExternalLink href={zone.sourceUrl}>Source</ExternalLink>}
-      </div>
-    </Card>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
 export default async function ParkingPage() {
-  const parkingZones = await getParkingZones();
-  const prohibited = parkingZones.filter((z) => z.rule === "prohibited");
+  const parkingMap = await resolveMapView("parking-cash");
 
   return (
     <>
       <PageHeader
         eyebrow="Plan your visit"
         title="Parking & ATMs"
-        intro="Kingston's parking universe is small but full of gotchas: a paid Port lot by the marina, a commuter lot one block up, a strictly enforced free 2-hour row, a couple of genuinely unrestricted streets, and two free park & rides. The map shows all of it — color-coded — and where the cash machines are."
+        intro="Kingston's parking universe is small but full of gotchas: a paid Port lot by the marina, a commuter lot one block up, a strictly enforced free 2-hour row, a couple of genuinely unrestricted streets, and two free park & rides. The Chamber's live parking map shows where to leave the car — color-coded by type, with owner, payment, and time-limit details — plus where to find cash."
       />
 
       <Section
         title="The map"
-        subtitle="Every public street in the Kingston UGA, color-coded by parking rule, plus lots, park & rides, and ATMs. Tap anything for rules, directions, and a Street View look at the actual curb. Rates verified July 2, 2026."
+        subtitle="The Chamber's live parking map, built and kept current in the portal. Tap any lot for its type, owner, how to pay, and time limits. Colors are set automatically by parking type."
       >
-        <TownMap zones={parkingZones} atms={atms} height="500px" />
-        <MapLegend />
+        {parkingMap ? (
+          <FeatureMap resolved={parkingMap} height="500px" />
+        ) : (
+          <Card>
+            <p className="text-sm text-ink-soft">Parking map coming soon.</p>
+          </Card>
+        )}
         <p className="mt-2 text-xs text-ink-soft">
-          Dark-navy dots are ATMs; the dashed navy line is the Kingston urban growth
-          area (Census boundary). Green and cyan streets come from the county&apos;s 2015
-          curb inventory; gray streets have no restriction we know of — either way, the
-          sign on the pole is always the legal authority. Markers labeled
-          &ldquo;unverified&rdquo; still need an on-the-ground check. Chamber admins can
-          correct any shape or pin at /admin/map — local eyes beat any database.
+          Colors follow the parking type shown in the legend. The sign on the pole is
+          always the legal authority — where a lot and a posted sign disagree, believe the
+          sign. Chamber admins keep this map current in the portal at /admin/maps.
         </p>
       </Section>
 
-      <Section
-        title="Where to park"
-        subtitle="Grouped by rule. Prices change — every card links to its source."
-      >
-        <div className="space-y-8">
-          {GROUPS.map((group) => {
-            const zones = parkingZones.filter((z) => z.rule === group.rule);
-            if (zones.length === 0) return null;
-            return (
-              <div key={group.rule}>
-                <h3 className="text-xl font-semibold text-sound-deep">{group.title}</h3>
-                <p className="mt-1 mb-3 text-sm text-ink-soft">{group.blurb}</p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {zones.map((zone) => (
-                    <ZoneCard key={zone.id} zone={zone} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-
-          <div>
-            <h3 className="text-xl font-semibold text-sound-deep">Where not to park</h3>
-            <p className="mt-1 mb-3 text-sm text-ink-soft">
-              No-parking streets (per the 2015 county study) plus the Port&apos;s boat-launch
-              apron — obey posted signs.
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {prohibited.map((zone) => (
-                <ZoneCard key={zone.id} zone={zone} />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <Callout title="The line of cars on SR 104 is the ferry queue — not parking" tone="coral">
-            <p>
-              People mix these up all the time. If you&apos;re driving onto the boat, you don&apos;t
-              park anywhere — you join the holding line on SR 104. During peak periods (daily 8
-              am–8 pm in season), watch for the flashing-light advisory sign at Barber Cutoff Rd,
-              follow the lane, and take a boarding pass at the dispenser near Lindvog Rd before
-              waiting for green lights up to the tollbooths. Leave the line and your pass is void.
-              (See the boarding-pass details in{" "}
-              <a href="#atms" className="underline decoration-coral/60 underline-offset-2">
-                ATMs &amp; cash
-              </a>{" "}
-              below, including the current machine-down note.) If you&apos;re just picking someone
-              up or dropping off, skip the line entirely: stay in the right lane and turn right at
-              Washington St before the tollbooths. And if you&apos;re leaving a car behind to walk
-              on, use the Port or Diamond lots — not the free 2-hour zone, which the Port
-              explicitly asks ferry travelers to avoid.
-            </p>
-          </Callout>
-        </div>
+      <Section title="Before you park for the ferry">
+        <Callout title="The line of cars on SR 104 is the ferry queue — not parking" tone="coral">
+          <p>
+            People mix these up all the time. If you&apos;re driving onto the boat, you don&apos;t
+            park anywhere — you join the holding line on SR 104. During peak periods (daily 8
+            am–8 pm in season), watch for the flashing-light advisory sign at Barber Cutoff Rd,
+            follow the lane, and take a boarding pass at the dispenser near Lindvog Rd before
+            waiting for green lights up to the tollbooths. Leave the line and your pass is void.
+            (See the boarding-pass details in{" "}
+            <a href="#atms" className="underline decoration-coral/60 underline-offset-2">
+              ATMs &amp; cash
+            </a>{" "}
+            below, including the current machine-down note.) If you&apos;re just picking someone
+            up or dropping off, skip the line entirely: stay in the right lane and turn right at
+            Washington St before the tollbooths. And if you&apos;re leaving a car behind to walk
+            on, use the Port or Diamond lots — not the free 2-hour zone, which the Port
+            explicitly asks ferry travelers to avoid.
+          </p>
+        </Callout>
       </Section>
 
       <Section

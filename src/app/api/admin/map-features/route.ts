@@ -13,7 +13,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import type { FeatureKind, MapFeature } from "@/lib/map/types";
+import type { FeatureKind, MapFeature, ParkingMeta, ParkingType } from "@/lib/map/types";
+import { PARKING_TYPES } from "@/lib/map/types";
 import { deleteMapFeature, getMapFeatures, saveMapFeature } from "@/lib/stores/map-store";
 import { getMapViews } from "@/lib/stores/map-store";
 
@@ -160,6 +161,45 @@ export async function POST(request: NextRequest) {
   const imageUrl =
     typeof body.imageUrl === "string" && body.imageUrl.trim() ? body.imageUrl.trim() : undefined;
 
+  // images[]: stored-image names the upload endpoint returned. Keep only valid
+  // names, cap at 8, drop the rest.
+  const images =
+    Array.isArray(body.images)
+      ? body.images
+          .filter((n): n is string => typeof n === "string" && /^[a-z0-9._-]{1,80}$/i.test(n))
+          .slice(0, 8)
+      : [];
+
+  // parking: only built when an object with a valid type key is supplied.
+  const parkingKeys = new Set<string>(PARKING_TYPES.map((t) => t.key));
+  let parking: ParkingMeta | undefined;
+  if (body.parking && typeof body.parking === "object" && !Array.isArray(body.parking)) {
+    const p = body.parking as Record<string, unknown>;
+    const type = typeof p.type === "string" && parkingKeys.has(p.type) ? (p.type as ParkingType) : undefined;
+    if (type) {
+      const str = (v: unknown, max: number) =>
+        typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
+      const owner = str(p.owner, 200);
+      const phone = str(p.phone, 200);
+      const paymentMethod = str(p.paymentMethod, 200);
+      const paymentNotes = str(p.paymentNotes, 200);
+      const timeLimit = str(p.timeLimit, 200);
+      const paymentLink =
+        typeof p.paymentLink === "string" && /^(https?:\/\/|[a-z]+:\/\/)/i.test(p.paymentLink.trim())
+          ? p.paymentLink.trim().slice(0, 500)
+          : undefined;
+      parking = {
+        type,
+        ...(owner ? { owner } : {}),
+        ...(phone ? { phone } : {}),
+        ...(paymentMethod ? { paymentMethod } : {}),
+        ...(paymentLink ? { paymentLink } : {}),
+        ...(paymentNotes ? { paymentNotes } : {}),
+        ...(timeLimit ? { timeLimit } : {}),
+      };
+    }
+  }
+
   const feature: MapFeature = {
     id,
     kind,
@@ -169,6 +209,8 @@ export async function POST(request: NextRequest) {
     ...(category ? { category } : {}),
     ...(color ? { color } : {}),
     ...(imageUrl ? { imageUrl } : {}),
+    ...(images.length ? { images } : {}),
+    ...(parking ? { parking } : {}),
     ...(link ? { link } : {}),
     ...(point ? { point } : {}),
     ...(path ? { path } : {}),

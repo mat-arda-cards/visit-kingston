@@ -44,9 +44,13 @@ import type {
 import {
   MARKER_CATEGORIES,
   markerCategory,
+  PARKING_TYPES,
+  parkingTypeInfo,
+  featureImages,
   type FeatureKind,
   type MapFeature,
   type MapView,
+  type ParkingType,
   type ResolvedMapView,
 } from "@/lib/map/types";
 import { Badge } from "@/components/ui";
@@ -93,9 +97,19 @@ function defaultColor(kind: FeatureKind): string {
   return DEFAULT_LINE_COLOR;
 }
 
-/** Color a line/trail/area actually renders with (its own or a kind default). */
-function shapeColor(f: { kind: FeatureKind; color?: string }): string {
-  return f.color || defaultColor(f.kind);
+/** Parking-type color if this feature carries one, else undefined. */
+function parkingDrawColor(f: {
+  parking?: { type?: string } | null;
+  parkingType?: string;
+}): string | undefined {
+  const key = f.parkingType ?? f.parking?.type;
+  return key ? parkingTypeInfo(key)?.color : undefined;
+}
+
+/** Color a line/trail/area actually renders with (parking type wins, then its
+ *  own color, then a kind default). */
+function shapeColor(f: { kind: FeatureKind; color?: string; parking?: { type?: string } | null; parkingType?: string }): string {
+  return parkingDrawColor(f) || f.color || defaultColor(f.kind);
 }
 
 const r6 = (n: number): number => Math.round(n * 1e6) / 1e6;
@@ -128,11 +142,20 @@ type Draft = {
   color: string;
   notes: string;
   link: string;
-  imageUrl: string;
+  images: string[];
   views: string[];
+  // Parking. `parkingType === ""` means the feature is not a parking area.
+  parkingType: string;
+  owner: string;
+  phone: string;
+  paymentMethod: string;
+  paymentLink: string;
+  paymentNotes: string;
+  timeLimit: string;
 };
 
 function toDraft(f: MapFeature): Draft {
+  const p = f.parking;
   return {
     kind: f.kind,
     title: f.title,
@@ -140,8 +163,15 @@ function toDraft(f: MapFeature): Draft {
     color: f.color ?? "",
     notes: f.notes ?? "",
     link: f.link ?? "",
-    imageUrl: f.imageUrl ?? "",
+    images: featureImages(f),
     views: [...f.views],
+    parkingType: p?.type ?? "",
+    owner: p?.owner ?? "",
+    phone: p?.phone ?? "",
+    paymentMethod: p?.paymentMethod ?? "",
+    paymentLink: p?.paymentLink ?? "",
+    paymentNotes: p?.paymentNotes ?? "",
+    timeLimit: p?.timeLimit ?? "",
   };
 }
 
@@ -161,9 +191,13 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 /* ------------------------------------------------------------------ */
 
 /** divIcon showing the category emoji on a colored pin. */
-function markerIcon(L: typeof import("leaflet"), f: { category?: string; color?: string }, selected: boolean) {
+function markerIcon(
+  L: typeof import("leaflet"),
+  f: { category?: string; color?: string; parking?: { type?: string } | null; parkingType?: string },
+  selected: boolean,
+) {
   const cat = markerCategory(f.category);
-  const color = f.color || cat.color;
+  const color = parkingDrawColor(f) || f.color || cat.color;
   const size = selected ? 34 : 28;
   return L.divIcon({
     className: "",
@@ -175,7 +209,10 @@ function markerIcon(L: typeof import("leaflet"), f: { category?: string; color?:
   });
 }
 
-function shapeStyle(f: { kind: FeatureKind; color?: string }, selected: boolean) {
+function shapeStyle(
+  f: { kind: FeatureKind; color?: string; parking?: { type?: string } | null; parkingType?: string },
+  selected: boolean,
+) {
   const color = shapeColor(f);
   const base = { color, weight: selected ? 5 : 3, opacity: 0.9 };
   if (f.kind === "area") {
@@ -621,6 +658,31 @@ export function MapBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, activeViewId, showBuiltins, contextEpoch]);
 
+  /* ---------------- live draft color on the canvas ---------------- */
+
+  // Reflect the selected feature's draft color / parking type on its live map
+  // layer as the admin edits (before Save). Parking type wins over manual
+  // color; falls back to the stored feature otherwise.
+  useEffect(() => {
+    const id = selectedIdRef.current;
+    const L = leafletRef.current;
+    if (!id || !draft || !L) return;
+    const f = featuresRef.current.find((x) => x.id === id);
+    const layer = layersRef.current.get(id);
+    if (!f || !layer) return;
+    const selected = true;
+    // Draft-driven color source for the style/icon helpers.
+    const styled = { kind: f.kind, color: draft.color, parkingType: draft.parkingType };
+    if (f.kind === "marker") {
+      (layer as unknown as Marker).setIcon(
+        markerIcon(L, { category: draft.category, color: draft.color, parkingType: draft.parkingType }, selected),
+      );
+    } else {
+      (layer as unknown as Polyline).setStyle(shapeStyle(styled, selected));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.color, draft?.parkingType, draft?.category]);
+
   /* ---------------- selection ---------------- */
 
   function select(id: string) {
@@ -889,6 +951,23 @@ export function MapBuilder({
       }
     }
 
+    // Parking type is offered for markers (pay station / small lot) and areas.
+    const parkingType =
+      (kind === "marker" || kind === "area") && draft.parkingType ? (draft.parkingType as ParkingType) : "";
+    const trimmed = (s: string) => s.trim();
+    const parking = parkingType
+      ? {
+          type: parkingType,
+          ...(trimmed(draft.owner) ? { owner: trimmed(draft.owner) } : {}),
+          ...(trimmed(draft.phone) ? { phone: trimmed(draft.phone) } : {}),
+          ...(trimmed(draft.paymentMethod) ? { paymentMethod: trimmed(draft.paymentMethod) } : {}),
+          ...(trimmed(draft.paymentLink) ? { paymentLink: trimmed(draft.paymentLink) } : {}),
+          ...(trimmed(draft.paymentNotes) ? { paymentNotes: trimmed(draft.paymentNotes) } : {}),
+          ...(trimmed(draft.timeLimit) ? { timeLimit: trimmed(draft.timeLimit) } : {}),
+        }
+      : null;
+    const images = draft.images.filter(Boolean);
+
     const feature: MapFeature = {
       id: selectedId,
       kind,
@@ -896,8 +975,11 @@ export function MapBuilder({
       views: draft.views,
       ...(draft.notes.trim() ? { notes: draft.notes.trim() } : {}),
       ...(kind === "marker" && draft.category ? { category: draft.category } : {}),
-      ...(draft.color ? { color: draft.color } : {}),
-      ...(draft.imageUrl ? { imageUrl: draft.imageUrl } : {}),
+      // Parking color is automatic — don't persist a manual color alongside it.
+      ...(!parking && draft.color ? { color: draft.color } : {}),
+      ...(parking ? { parking } : {}),
+      // New saves use images[]; the API keeps imageUrl back-compat on read.
+      ...(images.length ? { images } : {}),
       ...(draft.link.trim() ? { link: draft.link.trim() } : {}),
     };
     // Attach only the geometry that matches the (possibly switched) kind.
@@ -1036,25 +1118,52 @@ export function MapBuilder({
 
   /* ---------------- image upload ---------------- */
 
-  async function uploadImage(file: File) {
+  // Upload one file; append its stored name onto draft.images. Returns true on
+  // success. Doesn't manage the `uploading` flag — the caller does, so a batch
+  // upload shows a single "Uploading…" for the whole set.
+  async function uploadImage(file: File): Promise<boolean> {
+    const fd = new FormData();
+    fd.append("image", file);
+    const res = await fetch("/api/admin/map-features/image", { method: "POST", body: fd });
+    const data = (await res.json()) as { ok?: boolean; imageUrl?: string; error?: string };
+    if (!res.ok || !data.ok || !data.imageUrl) {
+      setMsg({ kind: "error", text: data.error ?? "Could not upload the image." });
+      return false;
+    }
+    const name = data.imageUrl;
+    setDraft((d) => (d && !d.images.includes(name) ? { ...d, images: [...d.images, name] } : d));
+    setDirty(true);
+    return true;
+  }
+
+  // Upload one or more selected files, appending each returned name in turn.
+  async function uploadImages(files: File[]) {
+    if (files.length === 0) return;
     setUploading(true);
     setMsg(null);
+    let ok = 0;
     try {
-      const fd = new FormData();
-      fd.append("image", file);
-      const res = await fetch("/api/admin/map-features/image", { method: "POST", body: fd });
-      const data = (await res.json()) as { ok?: boolean; imageUrl?: string; error?: string };
-      if (!res.ok || !data.ok || !data.imageUrl) {
-        setMsg({ kind: "error", text: data.error ?? "Could not upload the image." });
-        return;
+      for (const file of files) {
+        // eslint-disable-next-line no-await-in-loop
+        if (await uploadImage(file)) ok++;
       }
-      patchDraft({ imageUrl: data.imageUrl });
-      setMsg({ kind: "ok", text: "Image uploaded — Save the feature to keep it." });
+      if (ok > 0) {
+        setMsg({
+          kind: "ok",
+          text: `${ok === 1 ? "Photo" : `${ok} photos`} uploaded — Save the feature to keep ${ok === 1 ? "it" : "them"}.`,
+        });
+      }
     } catch {
       setMsg({ kind: "error", text: "Could not upload the image — is the app running?" });
     } finally {
       setUploading(false);
     }
+  }
+
+  function removeDraftImage(name: string) {
+    setDraft((d) => (d ? { ...d, images: d.images.filter((n) => n !== name) } : d));
+    setDirty(true);
+    setMsg(null);
   }
 
   /* ---------------- view filter / active view ---------------- */
@@ -1303,6 +1412,25 @@ export function MapBuilder({
         </select>
       </Field>
 
+      {/* Parking — offered for areas (lots) and markers (a pay-station /
+          small-lot pin). Picking a type auto-colors the shape. */}
+      {(draft.kind === "marker" || draft.kind === "area") && (
+        <Field label="Parking type">
+          <select
+            className={INPUT}
+            value={draft.parkingType}
+            onChange={(e) => patchDraft({ parkingType: e.target.value })}
+          >
+            <option value="">— Not a parking area —</option>
+            {PARKING_TYPES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
       <Field label="Title">
         <input
           className={INPUT}
@@ -1328,25 +1456,97 @@ export function MapBuilder({
         </Field>
       )}
 
-      <Field label={draft.kind === "marker" ? "Pin tint (optional)" : "Color"}>
-        <span className="flex items-center gap-2">
-          <input
-            type="color"
-            value={draft.color || (draft.kind === "marker" ? markerCategory(draft.category).color : defaultColor(draft.kind))}
-            onChange={(e) => patchDraft({ color: e.target.value })}
-            className="h-9 w-12 cursor-pointer rounded border border-sand"
-          />
-          {draft.color && (
-            <button
-              type="button"
-              onClick={() => patchDraft({ color: "" })}
-              className="text-xs font-semibold text-ink-soft hover:underline"
-            >
-              reset
-            </button>
-          )}
-        </span>
-      </Field>
+      {draft.parkingType ? (
+        <Field label="Color">
+          <span className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="h-9 w-12 rounded border border-sand"
+              style={{ background: parkingTypeInfo(draft.parkingType)?.color ?? "#6b7280" }}
+            />
+            <span className="text-xs text-ink-soft">Color: automatic by parking type</span>
+          </span>
+        </Field>
+      ) : (
+        <Field label={draft.kind === "marker" ? "Pin tint (optional)" : "Color"}>
+          <span className="flex items-center gap-2">
+            <input
+              type="color"
+              value={draft.color || (draft.kind === "marker" ? markerCategory(draft.category).color : defaultColor(draft.kind))}
+              onChange={(e) => patchDraft({ color: e.target.value })}
+              className="h-9 w-12 cursor-pointer rounded border border-sand"
+            />
+            {draft.color && (
+              <button
+                type="button"
+                onClick={() => patchDraft({ color: "" })}
+                className="text-xs font-semibold text-ink-soft hover:underline"
+              >
+                reset
+              </button>
+            )}
+          </span>
+        </Field>
+      )}
+
+      {/* Parking details — optional structured fields, shown when a parking
+          type is selected. */}
+      {draft.parkingType && (
+        <div className="rounded-xl border border-sand bg-shell/40 p-3">
+          <span className="text-sm font-semibold text-sound-deep">Parking details</span>
+          <div className="mt-2 flex flex-col gap-3">
+            <Field label="Owner">
+              <input
+                className={INPUT}
+                value={draft.owner}
+                onChange={(e) => patchDraft({ owner: e.target.value })}
+                placeholder="e.g. City of Kingston, Kingston Chamber"
+              />
+            </Field>
+            <Field label="Phone">
+              <input
+                className={INPUT}
+                type="tel"
+                value={draft.phone}
+                onChange={(e) => patchDraft({ phone: e.target.value })}
+                placeholder="(360) 555-0100"
+              />
+            </Field>
+            <Field label="Payment method">
+              <input
+                className={INPUT}
+                value={draft.paymentMethod}
+                onChange={(e) => patchDraft({ paymentMethod: e.target.value })}
+                placeholder="Text-to-pay, Kiosk (card), PayByPhone…"
+              />
+            </Field>
+            <Field label="Payment link (https:// or app link)">
+              <input
+                className={INPUT}
+                value={draft.paymentLink}
+                onChange={(e) => patchDraft({ paymentLink: e.target.value })}
+                placeholder="https:// or app deep link"
+              />
+            </Field>
+            <Field label="Payment notes">
+              <textarea
+                className={INPUT}
+                rows={2}
+                value={draft.paymentNotes}
+                onChange={(e) => patchDraft({ paymentNotes: e.target.value })}
+              />
+            </Field>
+            <Field label="Time limit(s)">
+              <input
+                className={INPUT}
+                value={draft.timeLimit}
+                onChange={(e) => patchDraft({ timeLimit: e.target.value })}
+                placeholder="e.g. 2 hours, 24 hr max"
+              />
+            </Field>
+          </div>
+        </div>
+      )}
 
       <Field label="Notes">
         <textarea
@@ -1367,35 +1567,41 @@ export function MapBuilder({
       </Field>
 
       <div>
-        <span className="text-sm font-medium text-ink">Image</span>
-        {draft.imageUrl && (
-          <img
-            src={`/api/map/image?p=${encodeURIComponent(draft.imageUrl)}`}
-            alt=""
-            className="mt-1.5 h-28 w-full rounded-lg border border-sand object-cover"
-          />
+        <span className="text-sm font-medium text-ink">Photos</span>
+        {draft.images.length > 0 && (
+          <div className="mt-1.5 grid grid-cols-3 gap-2">
+            {draft.images.map((name) => (
+              <div key={name} className="relative">
+                <img
+                  src={`/api/map/image?p=${encodeURIComponent(name)}`}
+                  alt=""
+                  className="h-20 w-full rounded-lg border border-sand object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeDraftImage(name)}
+                  aria-label="Remove photo"
+                  className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-sand bg-white text-xs font-bold text-coral-deep shadow transition-colors hover:bg-coral/10"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
         )}
         <div className="mt-1.5 flex items-center gap-2">
           <input
             type="file"
+            multiple
             accept="image/jpeg,image/png,image/webp,image/gif"
             disabled={uploading}
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) uploadImage(file);
+              const files = Array.from(e.target.files ?? []);
+              if (files.length) void uploadImages(files);
               e.target.value = "";
             }}
             className="text-xs text-ink-soft file:mr-2 file:rounded-full file:border-0 file:bg-sound file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
           />
-          {draft.imageUrl && (
-            <button
-              type="button"
-              onClick={() => patchDraft({ imageUrl: "" })}
-              className="text-xs font-semibold text-coral-deep hover:underline"
-            >
-              remove
-            </button>
-          )}
         </div>
         {uploading && <p className="mt-1 text-xs text-ink-soft">Uploading…</p>}
       </div>

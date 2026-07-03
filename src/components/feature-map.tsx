@@ -15,7 +15,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap } from "leaflet";
-import { markerCategory, type ResolvedMapView } from "@/lib/map/types";
+import {
+  markerCategory,
+  featureColor,
+  featureImages,
+  parkingTypeInfo,
+  type MapFeature,
+  type ResolvedMapView,
+} from "@/lib/map/types";
 
 // ---- shared color conventions (kept in sync with town-map.tsx) ----
 
@@ -131,22 +138,73 @@ function markerIconHtml(emoji: string, ring: string): string {
   </div>`;
 }
 
+/** Parking-meta block for a feature popup. Escapes all user text. */
+function parkingBlockHtml(p: NonNullable<MapFeature["parking"]>): string {
+  const info = parkingTypeInfo(p.type);
+  const rows: string[] = [];
+
+  if (info) {
+    rows.push(
+      `<p style="margin:6px 0 0;"><span style="display:inline-block;padding:1px 8px;border-radius:9999px;font-size:0.72rem;font-weight:600;color:#fff;background:${
+        info.color
+      };">${esc(info.label)}</span></p>`,
+    );
+  }
+  if (p.owner) {
+    rows.push(
+      `<p style="margin:4px 0 0;"><span style="font-weight:600;">Owner:</span> ${esc(
+        p.owner,
+      )}</p>`,
+    );
+  }
+  if (p.phone) {
+    rows.push(
+      `<p style="margin:4px 0 0;"><span style="font-weight:600;">Phone:</span> <a href="tel:${esc(
+        p.phone,
+      )}">${esc(p.phone)}</a></p>`,
+    );
+  }
+  if (p.paymentMethod || p.paymentLink) {
+    const bits: string[] = [`<span style="font-weight:600;">Payment:</span>`];
+    if (p.paymentMethod) bits.push(` ${esc(p.paymentMethod)}`);
+    if (p.paymentLink) {
+      bits.push(
+        `${p.paymentMethod ? " · " : " "}<a href="${esc(
+          p.paymentLink,
+        )}" target="_blank" rel="noopener noreferrer">Pay ↗</a>`,
+      );
+    }
+    rows.push(`<p style="margin:4px 0 0;">${bits.join("")}</p>`);
+  }
+  if (p.paymentNotes) {
+    rows.push(
+      `<p style="margin:4px 0 0;"><span style="font-weight:600;">Payment notes:</span> ${esc(
+        p.paymentNotes,
+      )}</p>`,
+    );
+  }
+  if (p.timeLimit) {
+    rows.push(
+      `<p style="margin:4px 0 0;"><span style="font-weight:600;">Time limit:</span> ${esc(
+        p.timeLimit,
+      )}</p>`,
+    );
+  }
+  return rows.join("");
+}
+
 /** Shared popup body for a custom feature. Escapes all user text. */
-function featurePopupHtml(f: {
-  title: string;
-  notes?: string;
-  imageUrl?: string;
-  link?: string;
-}): string {
+function featurePopupHtml(f: MapFeature): string {
   const parts: string[] = [
     `<p style="margin:0;font-weight:600;font-size:0.95rem;">${esc(f.title)}</p>`,
   ];
+  if (f.parking) parts.push(parkingBlockHtml(f.parking));
   if (f.notes) parts.push(`<p style="margin:4px 0 0;">${esc(f.notes)}</p>`);
-  if (f.imageUrl) {
+  for (const img of featureImages(f)) {
     parts.push(
-      `<img src="/api/map/image?p=${encodeURIComponent(f.imageUrl)}" alt="${esc(
+      `<img src="/api/map/image?p=${encodeURIComponent(img)}" alt="${esc(
         f.title,
-      )}" style="max-width:210px;border-radius:6px;margin-top:6px;" />`,
+      )}" style="display:block;max-width:210px;border-radius:6px;margin-top:6px;" />`,
     );
   }
   if (f.link) {
@@ -189,17 +247,28 @@ interface LegendEntry {
 
 export function FeatureMap({
   view,
+  resolved,
   height = "460px",
   className = "",
 }: {
-  view: string;
+  /** View slug to fetch client-side from /api/map/<view>. */
+  view?: string;
+  /**
+   * Pre-resolved view payload, supplied by a server component. When set, the
+   * map renders it directly and skips the client fetch — this is how a draft
+   * (unpublished) view can be embedded on a page: resolveMapView() does not
+   * gate on `published`, whereas the public /api/map route 404s drafts.
+   */
+  resolved?: ResolvedMapView | null;
   height?: string;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
-  const [data, setData] = useState<ResolvedMapView | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [data, setData] = useState<ResolvedMapView | null>(resolved ?? null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    resolved ? "ready" : "loading",
+  );
   const [legend, setLegend] = useState<LegendEntry[]>([]);
   // On touch devices the map starts non-draggable so the page can scroll past
   // it; a tap unlocks panning. Always false on desktop (fine pointer).
@@ -210,8 +279,16 @@ export function FeatureMap({
     setLocked(false);
   }
 
-  // Fetch the resolved view whenever `view` changes.
+  // When a server-resolved payload is supplied, render it directly (no fetch).
   useEffect(() => {
+    if (!resolved) return;
+    setData(resolved);
+    setStatus("ready");
+  }, [resolved]);
+
+  // Otherwise fetch the resolved view whenever `view` changes.
+  useEffect(() => {
+    if (resolved || !view) return;
     let cancelled = false;
     setStatus("loading");
     setData(null);
@@ -230,7 +307,7 @@ export function FeatureMap({
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, [view, resolved]);
 
   // Build the map once data is ready. Tearing down + rebuilding on data change
   // keeps this component fully reusable across view switches.
@@ -277,10 +354,23 @@ export function FeatureMap({
       }).addTo(map);
 
       // ---- custom features ----
+      // A parking-typed feature colors itself by parking.type (featureColor)
+      // and gets a legend entry keyed by that type (deduped across lots),
+      // instead of the generic per-kind color/legend.
+      const parkingLegend = (
+        f: MapFeature,
+        color: string,
+        shape: "pin" | "swatch",
+      ): LegendEntry | null => {
+        const info = f.parking ? parkingTypeInfo(f.parking.type) : undefined;
+        if (!info) return null;
+        return { key: `parking-type-${info.key}`, label: info.label, color, shape };
+      };
+
       for (const f of data.features) {
         if (f.kind === "marker" && f.point) {
           const cat = markerCategory(f.category);
-          const ring = f.color || cat.color;
+          const ring = featureColor(f, cat.color);
           const icon = L.divIcon({
             className: "feature-pin",
             html: markerIconHtml(cat.emoji, ring),
@@ -291,29 +381,34 @@ export function FeatureMap({
             .addTo(map)
             .bindPopup(featurePopupHtml(f), { maxWidth: 240 });
           pts.push(f.point);
-          addLegend({
-            key: `cat-${cat.key}`,
-            label: cat.label,
-            color: ring,
-            shape: "pin",
-            emoji: cat.emoji,
-          });
+          const pl = parkingLegend(f, ring, "pin");
+          addLegend(
+            pl ?? {
+              key: `cat-${cat.key}`,
+              label: cat.label,
+              color: ring,
+              shape: "pin",
+              emoji: cat.emoji,
+            },
+          );
         } else if (f.kind === "line" && f.path) {
-          const color = f.color || LINE_COLOR;
+          const color = featureColor(f, LINE_COLOR);
           L.polyline(f.path, { color, weight: 4, opacity: 0.85 })
             .addTo(map)
             .bindPopup(featurePopupHtml(f), { maxWidth: 240 });
           pts.push(...f.path);
-          addLegend({ key: "kind-line", label: "Route", color, shape: "line" });
+          const pl = parkingLegend(f, color, "swatch");
+          addLegend(pl ?? { key: "kind-line", label: "Route", color, shape: "line" });
         } else if (f.kind === "trail" && f.path) {
-          const color = f.color || TRAIL_COLOR;
+          const color = featureColor(f, TRAIL_COLOR);
           L.polyline(f.path, { color, weight: 4, opacity: 0.9, dashArray: "6 6" })
             .addTo(map)
             .bindPopup(featurePopupHtml(f), { maxWidth: 240 });
           pts.push(...f.path);
-          addLegend({ key: "kind-trail", label: "Trail", color, shape: "dash" });
+          const pl = parkingLegend(f, color, "swatch");
+          addLegend(pl ?? { key: "kind-trail", label: "Trail", color, shape: "dash" });
         } else if (f.kind === "area" && f.polygon) {
-          const color = f.color || AREA_COLOR;
+          const color = featureColor(f, AREA_COLOR);
           L.polygon(f.polygon, {
             color,
             weight: 2,
@@ -323,7 +418,8 @@ export function FeatureMap({
             .addTo(map)
             .bindPopup(featurePopupHtml(f), { maxWidth: 240 });
           pts.push(...f.polygon);
-          addLegend({ key: "kind-area", label: "Area", color, shape: "swatch" });
+          const pl = parkingLegend(f, color, "swatch");
+          addLegend(pl ?? { key: "kind-area", label: "Area", color, shape: "swatch" });
         }
       }
 
@@ -501,7 +597,7 @@ export function FeatureMap({
           style={{ height }}
           className="relative z-0 w-full overflow-hidden rounded-2xl border border-sand"
           role="region"
-          aria-label={`Map: ${view}`}
+          aria-label={`Map: ${view ?? data?.view.id ?? "Kingston"}`}
         />
         {status === "loading" && (
           <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center rounded-2xl bg-shell/60 text-sm text-ink-soft">
