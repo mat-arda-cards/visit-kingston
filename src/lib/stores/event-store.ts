@@ -24,13 +24,26 @@ export async function deleteEvent(id: string): Promise<void> {
   await writeOverlayRecord(STORE, { id, _deleted: true } as EventItem & { _deleted: true });
 }
 
+const pacificDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Los_Angeles",
+});
+
+/** Pacific calendar date ("YYYY-MM-DD") for an event timestamp. Handles both
+ *  offset-carrying ISO strings and the naive local strings the portal's
+ *  datetime-local inputs produce (those parse as server-local; slicing the
+ *  raw string keeps their intended wall-clock date). */
+function pacificDateKey(iso: string): string {
+  if (!/Z$|[+-]\d{2}:\d{2}$/.test(iso)) return iso.slice(0, 10);
+  return pacificDay.format(new Date(iso));
+}
+
 /** Other events on the same Pacific calendar date — the deconfliction check. */
 export async function eventsSharingDate(
   dateIso: string,
   excludeId?: string,
 ): Promise<EventItem[]> {
-  const day = dateIso.slice(0, 10);
+  const day = pacificDateKey(dateIso);
   return (await getEvents()).filter(
-    (e) => e.start.slice(0, 10) === day && e.id !== excludeId,
+    (e) => pacificDateKey(e.start) === day && e.id !== excludeId,
   );
 }

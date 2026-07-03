@@ -64,6 +64,11 @@ export default async function PortalPage() {
         title: "Scavenger hunts",
         blurb: "Build hunts, reference photos, review submissions.",
       },
+      {
+        href: "/admin/map",
+        title: "Parking map editor",
+        blurb: "Drag pins and lot shapes to match reality; mark them field-verified.",
+      },
     );
   }
 

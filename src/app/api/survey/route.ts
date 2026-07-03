@@ -45,8 +45,14 @@ export async function POST(request: NextRequest) {
   return Response.json({ ok: true });
 }
 
-/** Aggregate summary for the Chamber's LTAC/JLARC reporting. */
+/** Aggregate summary for the Chamber's LTAC/JLARC reporting. Admin-only —
+ *  the same numbers render on the gated /admin dashboard. */
 export async function GET() {
+  const { getSessionUser } = await import("@/lib/auth");
+  const user = await getSessionUser();
+  if (user?.role !== "admin") {
+    return Response.json({ error: "admin only" }, { status: 403 });
+  }
   const summary = await surveyStore.summarize();
   return Response.json(summary);
 }

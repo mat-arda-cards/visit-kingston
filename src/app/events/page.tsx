@@ -12,7 +12,7 @@ import {
   mapSearchUrl,
 } from "@/components/ui";
 
-// "This weekend" depends on today's date — re-render at most hourly so a
+// "This weekend" depends on today's date — re-render at most every 60 s so a
 // statically built page doesn't freeze on the build day.
 export const revalidate = 60;
 

@@ -27,8 +27,8 @@ STUDY_NOTE = "Per the 2015 county parking study — signs on the pole always win
 NAME_RULES = {
     "Central Avenue Northeast": ("prohibited", "Parking prohibited full length (bike lanes, main Port outbound route)."),
     "Washington Boulevard Northeast": ("prohibited", "Parking prohibited (ferry offload route)."),
-    "Northeast State Highway 104": ("prohibited", "No shoulder parking — ferry holding line; striped/signed against queue-jumping."),
-    "State Highway 104": ("prohibited", "No shoulder parking — ferry holding line."),
+    "Northeast State Highway 104": ("ferry-holding", "SR 104 is the ferry holding corridor — vehicles queue here for the boat; no street parking."),
+    "State Highway 104": ("ferry-holding", "SR 104 is the ferry holding corridor — vehicles queue here for the boat; no street parking."),
     "Northeast West Kingston Road": ("prohibited", "Parking prohibited per county study."),
     "Northeast 2nd Street": ("free-2hr", STUDY_NOTE),
     "Northeast Georgia Avenue": ("free-unrestricted", "Unrestricted free street parking per county study — closest no-limit parking to the ferry. " + STUDY_NOTE),

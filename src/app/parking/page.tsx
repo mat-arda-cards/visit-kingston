@@ -10,13 +10,13 @@ import {
   mapDirectionsUrl,
 } from "@/components/ui";
 import { TownMap, MapLegend } from "@/components/town-map";
-import {
-  parkingZones,
-  RULE_LABELS,
-  type MapZone,
-  type ParkingRule,
-} from "@/lib/data/parking";
+import { RULE_LABELS, type MapZone, type ParkingRule } from "@/lib/data/parking";
+import { getParkingZones } from "@/lib/stores/parking-store";
 import { atms, atmMeta } from "@/lib/data/atms";
+
+// Zones come from the parking-zones store (seed + Chamber-admin overlay), so
+// corrections made at /admin/map go live here within a minute.
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Parking & ATMs",
@@ -34,6 +34,8 @@ const RULE_BADGE_TONE: Record<ParkingRule, "green" | "teal" | "navy" | "sand" | 
   paid: "navy",
   "park-and-ride-24h": "sand",
   prohibited: "coral",
+  "load-zone": "sand",
+  permit: "coral",
 };
 
 const GROUPS: { rule: ParkingRule; title: string; blurb: string }[] = [
@@ -111,7 +113,8 @@ function ZoneCard({ zone }: { zone: MapZone }) {
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
-export default function ParkingPage() {
+export default async function ParkingPage() {
+  const parkingZones = await getParkingZones();
   const prohibited = parkingZones.filter((z) => z.rule === "prohibited");
 
   return (
@@ -133,7 +136,8 @@ export default function ParkingPage() {
           area (Census boundary). Green and cyan streets come from the county&apos;s 2015
           curb inventory; gray streets have no restriction we know of — either way, the
           sign on the pole is always the legal authority. Markers labeled
-          &ldquo;unverified&rdquo; still need an on-the-ground check.
+          &ldquo;unverified&rdquo; still need an on-the-ground check. Chamber admins can
+          correct any shape or pin at /admin/map — local eyes beat any database.
         </p>
       </Section>
 

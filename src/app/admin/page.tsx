@@ -4,8 +4,8 @@
 // track here — the tracker itself skips /admin paths). force-dynamic because
 // the numbers must be fresh on every load, never a cached build-time snapshot.
 //
-// NOTE: this page is unlinked from the nav but NOT authenticated. Add auth
-// before deploying publicly — see the callout at the bottom of the page.
+// NOTE: access is gated by src/app/admin/layout.tsx (admin role required;
+// open only during pre-setup grace before any account exists).
 
 import type { Metadata } from "next";
 import { areaLabel, summarize, type AnalyticsSummary } from "@/lib/analytics-store";
