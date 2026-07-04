@@ -12,8 +12,7 @@ import { FerryLineInfo } from "@/components/ferry-line-info";
 import { NextFerries } from "@/components/next-ferries";
 import { SideSwitcher } from "@/components/side-switcher";
 import { getSide } from "@/lib/side-server";
-import { getFerryPredictionAccess } from "@/lib/stores/ferry-prediction-store";
-import { FerryPredictionPreviewBanner } from "@/components/ferry-prediction-banner";
+import { getFerryPredictionEnabled } from "@/lib/stores/ferry-prediction-store";
 
 export const revalidate = 60;
 
@@ -41,16 +40,17 @@ function nextDeparture(
 }
 
 export default async function Home() {
-  const [ferry, forecast, tides, events, copy, hiddenPaths, side, prediction] = await Promise.all([
-    getFerryStatusSnapshot(),
-    getForecast(2),
-    getTodaysTides(),
-    getEvents(),
-    getCopyOverrides(),
-    getHiddenPaths(),
-    getSide(),
-    getFerryPredictionAccess(),
-  ]);
+  const [ferry, forecast, tides, events, copy, hiddenPaths, side, predictionEnabled] =
+    await Promise.all([
+      getFerryStatusSnapshot(),
+      getForecast(2),
+      getTodaysTides(),
+      getEvents(),
+      getCopyOverrides(),
+      getHiddenPaths(),
+      getSide(),
+      getFerryPredictionEnabled(),
+    ]);
   const fastFerry = ferry.fastFerry;
   // Admin-hidden pages drop out of the feature grid.
   const visibleFeatures = features.filter((f) => !hiddenPaths.includes(f.href));
@@ -191,10 +191,10 @@ export default async function Home() {
         </div>
       </div>
 
-      {/* Plan-ahead callout → the ferry busyness planner (gated by the admin flag) */}
-      {(prediction.enabled || prediction.adminPreview) && (
+      {/* Plan-ahead callout → the ferry busyness planner. Shown only when the
+          feature is live for visitors; admins preview it on /ferry/plan. */}
+      {predictionEnabled && (
         <Section>
-          {prediction.adminPreview && <FerryPredictionPreviewBanner className="mb-3" />}
           <Link
             href="/ferry/plan"
             className="flex items-center justify-between gap-4 rounded-2xl border border-tide/30 bg-tide/[0.04] px-5 py-4 transition-colors hover:bg-tide/[0.08]"

@@ -151,6 +151,17 @@ export function FerryPredictionControl({ initial }: { initial: PredictionState }
           {fmtWhen(setting.setAt) ? ` · ${fmtWhen(setting.setAt)}` : ""}.
         </p>
       )}
+      <p className="mt-2 text-xs">
+        <a
+          href="/ferry/plan"
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2"
+        >
+          Preview the planner →
+        </a>{" "}
+        <span className="text-ink-soft">— admins can open it even while it&rsquo;s hidden.</span>
+      </p>
 
       {/* Accuracy panel — the validation signal */}
       <div className="mt-5 border-t border-sand pt-4">

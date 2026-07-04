@@ -23,9 +23,9 @@ import { FerryPredictionControl } from "./prediction-control";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Ferry & cash facts",
+  title: "Ferry settings",
   description:
-    "Edit the ferry payment methods, boarding-pass hours, cash tips, and the machine-down note behind /ferry and /parking.",
+    "Turn the ferry busyness prediction on or off and check its accuracy, pin today's boarding-pass status, and edit the ferry payment / boarding-pass / cash facts.",
 };
 
 export default async function AdminFerryInfoPage() {
@@ -44,8 +44,8 @@ export default async function AdminFerryInfoPage() {
     <>
       <PageHeader
         eyebrow="Chamber admin"
-        title="Ferry & cash facts"
-        intro="The structured facts behind the ferry and parking pages: how to pay, when the boarding-pass system runs, cash tips, and the machine-down note that changes most often. Edit a field and save its group — public pages update within a minute."
+        title="Ferry settings"
+        intro="Everything ferry-related the Chamber controls: turn the busyness prediction on or off (and watch its accuracy), pin today's boarding-pass status, and edit the how-to-pay, boarding-pass, and cash details behind the ferry and parking pages. Changes reach public pages within a minute."
       />
       <Section
         title="Busyness prediction"

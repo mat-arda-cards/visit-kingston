@@ -32,7 +32,6 @@ import { SideSwitcher } from "@/components/side-switcher";
 import { getEmpiricalBusyness } from "@/lib/stores/ferry-observations";
 import { getFerryPredictionAccess } from "@/lib/stores/ferry-prediction-store";
 import { FerryBusyToday } from "@/components/ferry-busy-today";
-import { FerryPredictionPreviewBanner } from "@/components/ferry-prediction-banner";
 import { todayPacific } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Ferry" };
@@ -126,9 +125,10 @@ export default async function FerryPage() {
         <FerryLineInfo side={side} />
       </div>
 
-      {(prediction.enabled || prediction.adminPreview) && (
+      {/* Only shown when the prediction feature is live for visitors. While it's
+          hidden, admins preview it on /ferry/plan, not here. */}
+      {prediction.enabled && (
         <div className="mx-auto max-w-5xl px-4 pt-4">
-          {prediction.adminPreview && <FerryPredictionPreviewBanner className="mb-3" />}
           <FerryBusyToday
             today={today}
             serverNow={serverNow}

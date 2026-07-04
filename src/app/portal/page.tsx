@@ -87,8 +87,8 @@ export default async function PortalPage() {
       },
       {
         href: "/admin/ferry-info",
-        title: "Ferry & cash facts",
-        blurb: "Boarding-pass hours, payment methods, the machine-down note.",
+        title: "Ferry settings",
+        blurb: "Busyness prediction on/off + accuracy, boarding-pass status, and payment/cash facts.",
       },
       {
         href: "/admin/itineraries",
