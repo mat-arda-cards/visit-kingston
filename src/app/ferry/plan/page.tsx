@@ -7,11 +7,14 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { PageHeader, Section } from "@/components/ui";
 import { getSailingSpace, getSailingsForDate, getValidDateRange } from "@/lib/wsf";
 import { getEmpiricalBusyness } from "@/lib/stores/ferry-observations";
+import { getFerryPredictionAccess } from "@/lib/stores/ferry-prediction-store";
 import { todayPacific } from "@/lib/time";
 import { assertPageVisible, HiddenPageBanner } from "@/lib/page-visibility";
+import { FerryPredictionPreviewBanner } from "@/components/ferry-prediction-banner";
 import { FerryPlanner, type PlannerSchedule } from "./ferry-planner";
 
 export const metadata: Metadata = {
@@ -53,6 +56,12 @@ function defaultPacificTime(): string {
 
 export default async function FerryPlanPage() {
   const hiddenPreview = await assertPageVisible("/ferry");
+
+  // The prediction feature ships OFF for visitors while it's being validated.
+  // Admins still get a preview; everyone else gets a clean 404.
+  const prediction = await getFerryPredictionAccess();
+  if (!prediction.enabled && !prediction.adminPreview) notFound();
+
   const today = todayPacific();
 
   const [carFerry, kingston, edmonds, range, empirical] = await Promise.all([
@@ -74,6 +83,11 @@ export default async function FerryPlanPage() {
   return (
     <>
       {hiddenPreview && <HiddenPageBanner />}
+      {prediction.adminPreview && (
+        <div className="mx-auto max-w-5xl px-4 pt-4">
+          <FerryPredictionPreviewBanner />
+        </div>
+      )}
       <PageHeader
         eyebrow="Ferry planner"
         title="Will the ferry be busy?"

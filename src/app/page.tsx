@@ -12,6 +12,8 @@ import { FerryLineInfo } from "@/components/ferry-line-info";
 import { NextFerries } from "@/components/next-ferries";
 import { SideSwitcher } from "@/components/side-switcher";
 import { getSide } from "@/lib/side-server";
+import { getFerryPredictionAccess } from "@/lib/stores/ferry-prediction-store";
+import { FerryPredictionPreviewBanner } from "@/components/ferry-prediction-banner";
 
 export const revalidate = 60;
 
@@ -39,7 +41,7 @@ function nextDeparture(
 }
 
 export default async function Home() {
-  const [ferry, forecast, tides, events, copy, hiddenPaths, side] = await Promise.all([
+  const [ferry, forecast, tides, events, copy, hiddenPaths, side, prediction] = await Promise.all([
     getFerryStatusSnapshot(),
     getForecast(2),
     getTodaysTides(),
@@ -47,6 +49,7 @@ export default async function Home() {
     getCopyOverrides(),
     getHiddenPaths(),
     getSide(),
+    getFerryPredictionAccess(),
   ]);
   const fastFerry = ferry.fastFerry;
   // Admin-hidden pages drop out of the feature grid.
@@ -188,28 +191,31 @@ export default async function Home() {
         </div>
       </div>
 
-      {/* Plan-ahead callout → the ferry busyness planner */}
-      <Section>
-        <Link
-          href="/ferry/plan"
-          className="flex items-center justify-between gap-4 rounded-2xl border border-tide/30 bg-tide/[0.04] px-5 py-4 transition-colors hover:bg-tide/[0.08]"
-        >
-          <div>
-            <p className="font-display font-semibold text-sound-deep">
-              {side === "edmonds"
-                ? "Crossing to Kingston? See how busy the ferry will be."
-                : "Planning a ferry trip? See how busy it will be."}
-            </p>
-            <p className="text-sm text-ink-soft">
-              Pick any date and time for a busyness estimate, when to arrive, and a trendline for the
-              whole day.
-            </p>
-          </div>
-          <span className="shrink-0 text-lg font-semibold text-tide-deep" aria-hidden>
-            →
-          </span>
-        </Link>
-      </Section>
+      {/* Plan-ahead callout → the ferry busyness planner (gated by the admin flag) */}
+      {(prediction.enabled || prediction.adminPreview) && (
+        <Section>
+          {prediction.adminPreview && <FerryPredictionPreviewBanner className="mb-3" />}
+          <Link
+            href="/ferry/plan"
+            className="flex items-center justify-between gap-4 rounded-2xl border border-tide/30 bg-tide/[0.04] px-5 py-4 transition-colors hover:bg-tide/[0.08]"
+          >
+            <div>
+              <p className="font-display font-semibold text-sound-deep">
+                {side === "edmonds"
+                  ? "Crossing to Kingston? See how busy the ferry will be."
+                  : "Planning a ferry trip? See how busy it will be."}
+              </p>
+              <p className="text-sm text-ink-soft">
+                Pick any date and time for a busyness estimate, when to arrive, and a trendline for
+                the whole day.
+              </p>
+            </div>
+            <span className="shrink-0 text-lg font-semibold text-tide-deep" aria-hidden>
+              →
+            </span>
+          </Link>
+        </Section>
+      )}
 
       {/* Getting in the ferry line */}
       <Section>

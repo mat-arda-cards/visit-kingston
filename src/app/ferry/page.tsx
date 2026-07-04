@@ -30,7 +30,9 @@ import { Sr104TrafficMap } from "@/components/sr104-traffic-map";
 import { getSide } from "@/lib/side-server";
 import { SideSwitcher } from "@/components/side-switcher";
 import { getEmpiricalBusyness } from "@/lib/stores/ferry-observations";
+import { getFerryPredictionAccess } from "@/lib/stores/ferry-prediction-store";
 import { FerryBusyToday } from "@/components/ferry-busy-today";
+import { FerryPredictionPreviewBanner } from "@/components/ferry-prediction-banner";
 import { todayPacific } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Ferry" };
@@ -54,16 +56,18 @@ function transitDirectionsUrl(destination: string): string {
 
 export default async function FerryPage() {
   const hiddenPreview = await assertPageVisible("/ferry");
-  const [carFerry, kingston, edmonds, alerts, copy, ferryInfo, side, empirical] = await Promise.all([
-    getTodaysSailings(),
-    getTerminalStatus("kingston"),
-    getTerminalStatus("edmonds"),
-    getRouteAlerts(),
-    getCopyOverrides(),
-    getFerryInfo(),
-    getSide(),
-    getEmpiricalBusyness(),
-  ]);
+  const [carFerry, kingston, edmonds, alerts, copy, ferryInfo, side, empirical, prediction] =
+    await Promise.all([
+      getTodaysSailings(),
+      getTerminalStatus("kingston"),
+      getTerminalStatus("edmonds"),
+      getRouteAlerts(),
+      getCopyOverrides(),
+      getFerryInfo(),
+      getSide(),
+      getEmpiricalBusyness(),
+      getFerryPredictionAccess(),
+    ]);
   const fastFerry = getFastFerrySailings();
   const vessels = await getVesselLocations();
   const initial = { carFerry, fastFerry, terminals: { kingston, edmonds }, alerts };
@@ -122,15 +126,18 @@ export default async function FerryPage() {
         <FerryLineInfo side={side} />
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 pt-4">
-        <FerryBusyToday
-          today={today}
-          serverNow={serverNow}
-          defaultDirection={side === "edmonds" ? "to-kingston" : "from-kingston"}
-          empirical={empirical.table}
-          observed={{ sampleCount: empirical.sampleCount, days: empirical.days }}
-        />
-      </div>
+      {(prediction.enabled || prediction.adminPreview) && (
+        <div className="mx-auto max-w-5xl px-4 pt-4">
+          {prediction.adminPreview && <FerryPredictionPreviewBanner className="mb-3" />}
+          <FerryBusyToday
+            today={today}
+            serverNow={serverNow}
+            defaultDirection={side === "edmonds" ? "to-kingston" : "from-kingston"}
+            empirical={empirical.table}
+            observed={{ sampleCount: empirical.sampleCount, days: empirical.days }}
+          />
+        </div>
+      )}
 
       <Section title="Next boats" subtitle="Both routes, both directions. Updates every minute while you watch.">
         <FerryBoard initial={initial} serverNow={serverNow} side={side} />

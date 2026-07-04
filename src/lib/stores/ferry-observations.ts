@@ -16,7 +16,14 @@ import { dataPath } from "../data-dir";
 import { hasDb, db, ensureSchema } from "../db";
 import type { Direction } from "../types";
 import type { SailingSpace, RouteDelays } from "../wsf";
-import { empiricalBucketKey, type EmpiricalTable } from "../ferry-forecast";
+import {
+  empiricalBucketKey,
+  scoreAt,
+  scoreToLevel,
+  type BusyLevel,
+  type EmpiricalTable,
+} from "../ferry-forecast";
+import { readMerged, writeOverlayRecord } from "./json-store";
 
 const TZ = "America/Los_Angeles";
 const DATA_FILE = dataPath("ferry", "observations.jsonl");
@@ -230,4 +237,108 @@ async function prune(nowMs: number): Promise<void> {
   if (kept.length !== lines.length) {
     await writeFile(DATA_FILE, kept.length ? kept.join("\n") + "\n" : "", "utf8");
   }
+}
+
+// ---- Accuracy backtest -----------------------------------------------------
+//
+// How good is the forecast? For each logged sailing we compare the model's
+// HEURISTIC prediction (no empirical blend — that would be grading on data it
+// learned from) against what actually happened (observed fullness), and roll it
+// up into error + level-agreement metrics. The daily accuracy cron records a
+// snapshot so the Chamber can watch the number before trusting the feature.
+
+const LEVEL_ORDER: BusyLevel[] = ["light", "moderate", "busy", "very-busy", "extreme"];
+const ACCURACY_STORE = "ferry-accuracy";
+const ACCURACY_ID = "latest";
+
+export interface AccuracyMetrics {
+  /** Sailings evaluated (observations with a usable fullness reading). */
+  n: number;
+  /** Mean absolute error, 0–100 busyness points. Lower is better. */
+  mae: number;
+  /** Root-mean-square error, 0–100. Punishes big misses. */
+  rmse: number;
+  /** Mean(predicted − observed): + = the model runs high, − = it runs low. */
+  bias: number;
+  /** Fraction (0–1) where the predicted busyness LEVEL matched the observed one. */
+  levelMatchRate: number;
+  /** Fraction (0–1) within one level of the observed one. */
+  within1Rate: number;
+  /** Distinct Pacific days behind the sample. */
+  spanDays: number;
+  computedAt: string;
+}
+
+interface AccuracyRecord {
+  id: typeof ACCURACY_ID;
+  latest: AccuracyMetrics | null;
+  history: AccuracyMetrics[];
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/** Score each logged sailing's heuristic prediction against what was observed. */
+export async function computeAccuracy(): Promise<AccuracyMetrics> {
+  const observations = await readObservations();
+  const days = new Set<string>();
+  let n = 0;
+  let sumAbs = 0;
+  let sumSq = 0;
+  let sumBias = 0;
+  let exact = 0;
+  let within1 = 0;
+
+  for (const o of observations) {
+    if (!(typeof o.max === "number" && o.max > 0 && typeof o.driveUp === "number" && o.driveUp >= 0)) {
+      continue;
+    }
+    const at = pacificParts(o.departs);
+    const observed = Math.round(clamp01(1 - o.driveUp / o.max) * 100);
+    const predicted = scoreAt(at.date, at.minutes, o.dir); // heuristic only — honest out-of-sample test
+    const err = predicted - observed;
+
+    n += 1;
+    sumAbs += Math.abs(err);
+    sumSq += err * err;
+    sumBias += err;
+    const pi = LEVEL_ORDER.indexOf(scoreToLevel(predicted));
+    const oi = LEVEL_ORDER.indexOf(scoreToLevel(observed));
+    if (pi === oi) exact += 1;
+    if (Math.abs(pi - oi) <= 1) within1 += 1;
+    days.add(pacificParts(o.ts).date);
+  }
+
+  return {
+    n,
+    mae: n ? round1(sumAbs / n) : 0,
+    rmse: n ? round1(Math.sqrt(sumSq / n)) : 0,
+    bias: n ? round1(sumBias / n) : 0,
+    levelMatchRate: n ? Math.round((exact / n) * 100) / 100 : 0,
+    within1Rate: n ? Math.round((within1 / n) * 100) / 100 : 0,
+    spanDays: days.size,
+    computedAt: new Date().toISOString(),
+  };
+}
+
+/** Compute accuracy now and append it to the rolling history (kept ~60 runs). */
+export async function recordAccuracySnapshot(): Promise<AccuracyMetrics> {
+  const metrics = await computeAccuracy();
+  const rows = await readMerged<AccuracyRecord>(ACCURACY_STORE, []);
+  const existing = rows.find((r) => r.id === ACCURACY_ID);
+  const history = [...(existing?.history ?? []), metrics].slice(-60);
+  await writeOverlayRecord<AccuracyRecord>(ACCURACY_STORE, {
+    id: ACCURACY_ID,
+    latest: metrics,
+    history,
+  });
+  return metrics;
+}
+
+/** The latest accuracy snapshot + recent history, for the admin panel. */
+export async function getAccuracy(): Promise<{ latest: AccuracyMetrics | null; history: AccuracyMetrics[] }> {
+  const rows = await readMerged<AccuracyRecord>(ACCURACY_STORE, []);
+  const rec = rows.find((r) => r.id === ACCURACY_ID);
+  return { latest: rec?.latest ?? null, history: rec?.history ?? [] };
 }

@@ -9,10 +9,16 @@ import {
   getBoardingPassOverride,
   getEffectiveBoardingPass,
 } from "@/lib/stores/boarding-pass-store";
+import {
+  getFerryPredictionEnabled,
+  getFerryPredictionSetting,
+} from "@/lib/stores/ferry-prediction-store";
+import { getAccuracy } from "@/lib/stores/ferry-observations";
 import { getBoardingPassStatus } from "@/lib/wsf";
 import { PageHeader, Section } from "@/components/ui";
 import { FerryInfoEditor } from "./editor";
 import { BoardingPassOverrideControl } from "./override-control";
+import { FerryPredictionControl } from "./prediction-control";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +29,16 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminFerryInfoPage() {
-  const [info, override, effective] = await Promise.all([
+  const [info, override, effective, predEnabled, predSetting, accuracy] = await Promise.all([
     getFerryInfo(),
     getBoardingPassOverride(),
     getEffectiveBoardingPass(),
+    getFerryPredictionEnabled(),
+    getFerryPredictionSetting(),
+    getAccuracy(),
   ]);
   const boardingPass = { estimate: getBoardingPassStatus(), override, effective };
+  const prediction = { enabled: predEnabled, setting: predSetting, accuracy };
 
   return (
     <>
@@ -37,6 +47,12 @@ export default async function AdminFerryInfoPage() {
         title="Ferry & cash facts"
         intro="The structured facts behind the ferry and parking pages: how to pay, when the boarding-pass system runs, cash tips, and the machine-down note that changes most often. Edit a field and save its group — public pages update within a minute."
       />
+      <Section
+        title="Busyness prediction"
+        subtitle="Turn the ferry busyness estimate on or off for visitors, and watch how accurate it's been. It ships off — validate the accuracy first, then flip it on."
+      >
+        <FerryPredictionControl initial={prediction} />
+      </Section>
       <Section
         title="Facts"
         subtitle="Each group saves on its own. The machine-down note is up top because it changes most often. Untouched fields always follow the site's built-in wording."
