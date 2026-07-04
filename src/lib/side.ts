@@ -11,6 +11,11 @@ export type WaterSide = "kingston" | "edmonds";
 
 export const SIDE_COOKIE = "vk-side";
 
+// Set once we've proactively asked the browser for location on a first visit
+// (opt-out: we ask once, then never nag). A hand-picked side (SIDE_COOKIE) also
+// counts as "asked". Either cookie suppresses the automatic prompt.
+export const SIDE_ASKED_COOKIE = "vk-side-asked";
+
 // Mid-Sound longitude between the Kingston (≈ -122.497) and Edmonds (≈ -122.383)
 // terminals. West of it = Kingston side; east = Edmonds side.
 export const SIDE_DIVIDE_LNG = -122.44;
