@@ -101,6 +101,66 @@ export async function getTodaysSailings(): Promise<{ sailings: Sailing[]; live: 
   return { sailings: fallbackSailings(), live: false };
 }
 
+/**
+ * The window of dates WSF has published a schedule for, as Pacific "YYYY-MM-DD"
+ * strings. Beyond DateThru the season isn't published yet, so a planner can
+ * only estimate (not snap to real sailings). null when the API is unreachable.
+ */
+export async function getValidDateRange(): Promise<{ from: string; thru: string } | null> {
+  const range = await wsfFetch<{ DateFrom: string; DateThru: string }>(
+    `${SCHEDULE_BASE}/validdaterange`,
+    3600,
+  );
+  if (!range?.DateFrom || !range?.DateThru) return null;
+  return {
+    from: pacificDayString(new Date(parseWsdotDate(range.DateFrom))),
+    thru: pacificDayString(new Date(parseWsdotDate(range.DateThru))),
+  };
+}
+
+/**
+ * Both-direction Edmonds–Kingston sailings for a specific Pacific date
+ * ("YYYY-MM-DD") via /schedule/{TripDate}/{dep}/{arr}. Used by the trip
+ * planner to snap an estimate to real departure times. Falls back to the
+ * bundled seasonal schedule (re-dated to the requested day, marked live:false)
+ * when the API is unreachable or the date is past the published window.
+ */
+export async function getSailingsForDate(
+  dateStr: string,
+): Promise<{ sailings: Sailing[]; live: boolean }> {
+  const [toKingston, toEdmonds] = await Promise.all([
+    wsfFetch<WsfScheduleResponse>(
+      `${SCHEDULE_BASE}/schedule/${dateStr}/${TERMINAL_IDS.edmonds}/${TERMINAL_IDS.kingston}`,
+      3600,
+    ),
+    wsfFetch<WsfScheduleResponse>(
+      `${SCHEDULE_BASE}/schedule/${dateStr}/${TERMINAL_IDS.kingston}/${TERMINAL_IDS.edmonds}`,
+      3600,
+    ),
+  ]);
+
+  if (toKingston?.TerminalCombos?.length && toEdmonds?.TerminalCombos?.length) {
+    const toSailings = (r: WsfScheduleResponse, direction: Sailing["direction"]): Sailing[] =>
+      r.TerminalCombos.flatMap((combo) =>
+        combo.Times.map((t) => ({
+          route: "edmonds-kingston" as const,
+          direction,
+          departs: parseWsdotDate(t.DepartingTime),
+          arrives: t.ArrivingTime ? parseWsdotDate(t.ArrivingTime) : undefined,
+          vessel: t.VesselName,
+        })),
+      );
+    return {
+      sailings: [
+        ...toSailings(toKingston, "to-kingston"),
+        ...toSailings(toEdmonds, "from-kingston"),
+      ],
+      live: true,
+    };
+  }
+  return { sailings: fallbackSailings(dateStr), live: false };
+}
+
 interface WsfSpaceResponse {
   DepartingSpaces: {
     Departure: string;

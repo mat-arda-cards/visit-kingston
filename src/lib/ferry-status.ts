@@ -13,6 +13,7 @@ import {
   type SailingSpace,
 } from "./wsf";
 import { getEffectiveBoardingPass } from "./stores/boarding-pass-store";
+import { recordSailingSpaceSnapshot } from "./stores/ferry-observations";
 import { getFastFerrySailings } from "./kitsap";
 import type { Sailing, TerminalStatus } from "./types";
 
@@ -38,13 +39,20 @@ export async function getFerryStatusSnapshot(): Promise<FerryStatusSnapshot> {
       getSailingSpace("edmonds"),
       getEffectiveBoardingPass(),
     ]);
+  const sailingSpace = { kingston: spaceFromKingston, edmonds: spaceFromEdmonds };
+
+  // Best-effort: log this snapshot's per-sailing fullness + delay so the trip
+  // planner's busyness model can refine against real data over time. Throttled
+  // internally and never awaited, so it can't slow or break the status response.
+  void recordSailingSpaceSnapshot(sailingSpace, delays).catch(() => {});
+
   return {
     carFerry,
     fastFerry: getFastFerrySailings(),
     terminals: { kingston, edmonds },
     alerts,
     delays,
-    sailingSpace: { kingston: spaceFromKingston, edmonds: spaceFromEdmonds },
+    sailingSpace,
     boardingPass,
   };
 }

@@ -29,14 +29,14 @@ function addMinutes(dateStr: string, hhmm: string, minutes: number): string {
   return pacificWallTimeToISO(dateStr, `${hh}:${mm}`);
 }
 
-export function fallbackSailings(): Sailing[] {
-  const today = todayPacific();
+export function fallbackSailings(dateStr: string = todayPacific()): Sailing[] {
+  const day = dateStr;
   const build = (times: string[], direction: Sailing["direction"]): Sailing[] =>
     times.map((t) => ({
       route: "edmonds-kingston" as const,
       direction,
-      departs: pacificWallTimeToISO(today, t),
-      arrives: addMinutes(today, t, CROSSING_MINUTES),
+      departs: pacificWallTimeToISO(day, t),
+      arrives: addMinutes(day, t, CROSSING_MINUTES),
       notes: "Approximate seasonal time — confirm with WSDOT",
     }));
   return [

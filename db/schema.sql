@@ -29,3 +29,13 @@ CREATE TABLE IF NOT EXISTS survey_response (
   ts       timestamptz NOT NULL DEFAULT now(),
   response jsonb NOT NULL
 );
+
+-- Append-only ferry observations: periodic snapshots of Edmonds–Kingston
+-- sailing fullness (drive-up spaces used) + delay, logged so the trip planner's
+-- busyness model can refine against real data over time. WSF never archives
+-- terminalsailingspace, so we poll and store it ourselves. getEmpiricalBusyness()
+-- scans these; retention pruning keeps the row count bounded.
+CREATE TABLE IF NOT EXISTS ferry_observation (
+  ts  timestamptz NOT NULL DEFAULT now(),
+  obs jsonb NOT NULL
+);

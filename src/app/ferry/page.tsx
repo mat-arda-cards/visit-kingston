@@ -4,6 +4,7 @@
 // every fare block links to its authoritative source.
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   Badge,
   Callout,
@@ -114,6 +115,26 @@ export default async function FerryPage() {
 
       <div className="mx-auto max-w-5xl px-4 pt-2">
         <FerryLineInfo side={side} />
+      </div>
+
+      <div className="mx-auto max-w-5xl px-4 pt-4">
+        <Link
+          href="/ferry/plan"
+          className="flex items-center justify-between gap-4 rounded-2xl border border-tide/30 bg-tide/[0.04] px-5 py-4 transition-colors hover:bg-tide/[0.08]"
+        >
+          <div>
+            <p className="font-semibold text-sound-deep">
+              Planning a trip? See how busy the ferry will be.
+            </p>
+            <p className="text-sm text-ink-soft">
+              Pick a date and time for a busyness estimate, when to arrive, and a trendline for the
+              whole day.
+            </p>
+          </div>
+          <span className="shrink-0 text-lg font-semibold text-tide-deep" aria-hidden>
+            →
+          </span>
+        </Link>
       </div>
 
       <Section title="Next boats" subtitle="Both routes, both directions. Updates every minute while you watch.">

@@ -53,6 +53,10 @@ const SCHEMA_STATEMENTS = [
      ts       timestamptz NOT NULL DEFAULT now(),
      response jsonb NOT NULL
    )`,
+  `CREATE TABLE IF NOT EXISTS ferry_observation (
+     ts  timestamptz NOT NULL DEFAULT now(),
+     obs jsonb NOT NULL
+   )`,
 ];
 
 let schemaReady: Promise<void> | null = null;
