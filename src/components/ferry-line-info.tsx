@@ -14,16 +14,21 @@ import { mapDirectionsUrl } from "@/components/ui";
 import { RichText } from "@/components/rich-text";
 import { copyText, getCopyOverrides } from "@/lib/stores/site-store";
 import { getEffectiveBoardingPass } from "@/lib/stores/boarding-pass-store";
-import { ferryLineNavUrl } from "@/lib/ferry-line";
+import { getTerminalStatus } from "@/lib/wsf";
+import { ferryLineNavUrl, lineBacksPastBarberCutoff } from "@/lib/ferry-line";
 
 const TERMINAL = "Kingston Ferry Terminal, Kingston, WA 98346";
 
 export async function FerryLineInfo({ className = "" }: { className?: string }) {
   const copy = await getCopyOverrides();
   const pass = await getEffectiveBoardingPass();
-  // Pass ON → the SR-104 line staging point, forced in via Barber Cutoff so
-  // nobody U-turns into the line early. Pass OFF → straight to the dock.
-  const navHref = pass.active ? ferryLineNavUrl() : mapDirectionsUrl(TERMINAL, "driving");
+  const kingston = await getTerminalStatus("kingston");
+  // Over a 2-hour driver wait means the line is past Barber Cutoff — route the
+  // turnaround out to Miller Bay Rd instead.
+  const longWait = lineBacksPastBarberCutoff(kingston.waitEstimate);
+  // Pass ON → the SR-104 line staging point, forced in via the right turnaround
+  // road so nobody U-turns into the line early. Pass OFF → straight to the dock.
+  const navHref = pass.active ? ferryLineNavUrl(longWait) : mapDirectionsUrl(TERMINAL, "driving");
   return (
     <div
       className={`rounded-2xl border border-coral/40 bg-coral/5 p-5 ${className}`}
@@ -67,8 +72,9 @@ export async function FerryLineInfo({ className = "" }: { className?: string }) 
           </a>
           {pass.active && (
             <p className="max-w-[12rem] text-center text-xs text-coral-deep">
-              Boarding pass on — routing you to the end of the SR-104 line via Barber Cutoff (not
-              the dock). Don&apos;t U-turn until Barber Cutoff or Miller Bay Rd.
+              {longWait
+                ? "Wait's over 2 hours — the line is past Barber Cutoff. Routing you out via Miller Bay Rd to join the back; don't U-turn early."
+                : "Boarding pass on — routing you to the back of the SR-104 line via Barber Cutoff (not the dock). Don't U-turn early."}
             </p>
           )}
           <Link

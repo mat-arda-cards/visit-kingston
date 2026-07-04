@@ -194,11 +194,12 @@ export function Sr104TrafficMap({ height = "420px" }: { height?: string }) {
       </ol>
       <p className="mt-2 text-xs text-ink-soft">
         When the pass is on, join the line from the <span className="font-medium text-ink">west,
-        coming down SR 104 via Barber Cutoff Rd</span> (or Miller Bay Rd from the south) — don&apos;t
-        U-turn into the line early; if you overshoot, turn around at Barber Cutoff or Miller Bay.
-        Active daily 8 a.m.–8 p.m. in the peak season, on weekends and holidays, through October 12.
-        Walk-ons, cyclists, and motorcycles skip it entirely; medical-preference vehicles go
-        straight to the tollbooths. Adapted from{" "}
+        coming down SR 104 via Barber Cutoff Rd</span> — don&apos;t U-turn into the line early. Only
+        when the wait tops <span className="font-medium text-ink">2 hours</span> and the line backs
+        up past Barber Cutoff do you go further out to <span className="font-medium text-ink">Miller
+        Bay Rd</span> to turn around. Active daily 8 a.m.–8 p.m. in the peak season, on weekends and
+        holidays, through October 12. Walk-ons, cyclists, and motorcycles skip it entirely;
+        medical-preference vehicles go straight to the tollbooths. Adapted from{" "}
         <a
           href={WSDOT_POST}
           target="_blank"

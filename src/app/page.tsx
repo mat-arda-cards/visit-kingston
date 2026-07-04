@@ -45,13 +45,10 @@ export default async function Home() {
     getCopyOverrides(),
     getHiddenPaths(),
   ]);
-  const carFerry = ferry.carFerry;
   const fastFerry = ferry.fastFerry;
   // Admin-hidden pages drop out of the feature grid.
   const visibleFeatures = features.filter((f) => !hiddenPaths.includes(f.href));
 
-  const nextToEdmonds = nextDeparture(carFerry.sailings, "from-kingston");
-  const nextToKingston = nextDeparture(carFerry.sailings, "to-kingston");
   const nextFastOut = nextDeparture(fastFerry.sailings, "from-kingston");
 
   const today = todayPacific();
@@ -113,54 +110,33 @@ export default async function Home() {
           </div>
         </div>
 
-        {/* Live strip */}
+        {/* Live strip — the full ferry widget (delays, car space, alerts, boarding
+            pass), then a slim fast-ferry + weather line so nothing from the old
+            summary is lost. */}
         <div className="border-t border-white/15 bg-sound-deep/85">
-          <div className="mx-auto grid max-w-5xl grid-cols-2 gap-x-6 gap-y-3 px-4 py-4 text-sm sm:grid-cols-4">
-            <div>
-              <p className="text-seaglass">
-                {copyText(copy, "home.strip.toEdmonds", "Next boat to Edmonds")}
-              </p>
-              <p className="text-lg font-semibold">{nextToEdmonds ?? "Done for today"}</p>
-            </div>
-            <div>
-              <p className="text-seaglass">
-                {copyText(copy, "home.strip.fromEdmonds", "Next arrival from Edmonds")}
-              </p>
-              <p className="text-lg font-semibold">{nextToKingston ?? "Done for today"}</p>
-            </div>
-            <div>
-              <p className="text-seaglass">
-                {copyText(copy, "home.strip.fastFerry", "Fast ferry to Seattle")}
-              </p>
-              <p className="text-lg font-semibold">{nextFastOut ?? "Not today"}</p>
-            </div>
-            <div>
-              <p className="text-seaglass">
-                {weatherNow ? weatherNow.name : copyText(copy, "home.strip.weather", "Weather")}
-              </p>
-              <p className="text-lg font-semibold">
-                {weatherNow
-                  ? `${weatherNow.temperature}°${weatherNow.temperatureUnit} · ${weatherNow.shortForecast}`
-                  : "See forecast at weather.gov"}
-              </p>
+          <div className="mx-auto max-w-5xl px-4 py-5">
+            <NextFerries initial={ferry} tone="dark" />
+            <div className="mt-4 flex flex-wrap items-baseline gap-x-8 gap-y-2 border-t border-white/10 pt-4 text-sm">
+              <div className="flex items-baseline gap-2">
+                <span className="text-seaglass">
+                  {copyText(copy, "home.strip.fastFerry", "Fast ferry to Seattle")}
+                </span>
+                <span className="font-semibold text-white">{nextFastOut ?? "Not today"}</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-seaglass">
+                  {weatherNow ? weatherNow.name : copyText(copy, "home.strip.weather", "Weather")}
+                </span>
+                <span className="font-semibold text-white">
+                  {weatherNow
+                    ? `${weatherNow.temperature}°${weatherNow.temperatureUnit} · ${weatherNow.shortForecast}`
+                    : "See forecast at weather.gov"}
+                </span>
+              </div>
             </div>
           </div>
-          {!carFerry.live && (
-            <p className="mx-auto max-w-5xl px-4 pb-3 text-xs text-seaglass/80">
-              {copyText(
-                copy,
-                "home.strip.notLive",
-                "Schedule times, not live status — confirm at wsdot.wa.gov/ferries.",
-              )}
-            </p>
-          )}
         </div>
       </div>
-
-      {/* Live ferry status — delays, car space, alerts, boarding pass */}
-      <Section>
-        <NextFerries initial={ferry} />
-      </Section>
 
       {/* Getting in the ferry line */}
       <Section>
