@@ -4,7 +4,6 @@
 // every fare block links to its authoritative source.
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   Badge,
   Callout,
@@ -30,6 +29,9 @@ import { FerryLineInfo } from "@/components/ferry-line-info";
 import { Sr104TrafficMap } from "@/components/sr104-traffic-map";
 import { getSide } from "@/lib/side-server";
 import { SideSwitcher } from "@/components/side-switcher";
+import { getEmpiricalBusyness } from "@/lib/stores/ferry-observations";
+import { FerryBusyToday } from "@/components/ferry-busy-today";
+import { todayPacific } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Ferry" };
 
@@ -52,7 +54,7 @@ function transitDirectionsUrl(destination: string): string {
 
 export default async function FerryPage() {
   const hiddenPreview = await assertPageVisible("/ferry");
-  const [carFerry, kingston, edmonds, alerts, copy, ferryInfo, side] = await Promise.all([
+  const [carFerry, kingston, edmonds, alerts, copy, ferryInfo, side, empirical] = await Promise.all([
     getTodaysSailings(),
     getTerminalStatus("kingston"),
     getTerminalStatus("edmonds"),
@@ -60,10 +62,13 @@ export default async function FerryPage() {
     getCopyOverrides(),
     getFerryInfo(),
     getSide(),
+    getEmpiricalBusyness(),
   ]);
   const fastFerry = getFastFerrySailings();
   const vessels = await getVesselLocations();
   const initial = { carFerry, fastFerry, terminals: { kingston, edmonds }, alerts };
+  const serverNow = new Date().toISOString();
+  const today = todayPacific();
 
   return (
     <>
@@ -118,27 +123,17 @@ export default async function FerryPage() {
       </div>
 
       <div className="mx-auto max-w-5xl px-4 pt-4">
-        <Link
-          href="/ferry/plan"
-          className="flex items-center justify-between gap-4 rounded-2xl border border-tide/30 bg-tide/[0.04] px-5 py-4 transition-colors hover:bg-tide/[0.08]"
-        >
-          <div>
-            <p className="font-semibold text-sound-deep">
-              Planning a trip? See how busy the ferry will be.
-            </p>
-            <p className="text-sm text-ink-soft">
-              Pick a date and time for a busyness estimate, when to arrive, and a trendline for the
-              whole day.
-            </p>
-          </div>
-          <span className="shrink-0 text-lg font-semibold text-tide-deep" aria-hidden>
-            →
-          </span>
-        </Link>
+        <FerryBusyToday
+          today={today}
+          serverNow={serverNow}
+          defaultDirection={side === "edmonds" ? "to-kingston" : "from-kingston"}
+          empirical={empirical.table}
+          observed={{ sampleCount: empirical.sampleCount, days: empirical.days }}
+        />
       </div>
 
       <Section title="Next boats" subtitle="Both routes, both directions. Updates every minute while you watch.">
-        <FerryBoard initial={initial} serverNow={new Date().toISOString()} side={side} />
+        <FerryBoard initial={initial} serverNow={serverNow} side={side} />
       </Section>
 
       {/* Kingston's SR-104 boarding-pass line is only relevant when you're

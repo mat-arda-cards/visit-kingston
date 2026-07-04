@@ -188,6 +188,29 @@ export default async function Home() {
         </div>
       </div>
 
+      {/* Plan-ahead callout → the ferry busyness planner */}
+      <Section>
+        <Link
+          href="/ferry/plan"
+          className="flex items-center justify-between gap-4 rounded-2xl border border-tide/30 bg-tide/[0.04] px-5 py-4 transition-colors hover:bg-tide/[0.08]"
+        >
+          <div>
+            <p className="font-display font-semibold text-sound-deep">
+              {side === "edmonds"
+                ? "Crossing to Kingston? See how busy the ferry will be."
+                : "Planning a ferry trip? See how busy it will be."}
+            </p>
+            <p className="text-sm text-ink-soft">
+              Pick any date and time for a busyness estimate, when to arrive, and a trendline for the
+              whole day.
+            </p>
+          </div>
+          <span className="shrink-0 text-lg font-semibold text-tide-deep" aria-hidden>
+            →
+          </span>
+        </Link>
+      </Section>
+
       {/* Getting in the ferry line */}
       <Section>
         <FerryLineInfo side={side} />
