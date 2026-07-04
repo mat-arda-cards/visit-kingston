@@ -1,7 +1,8 @@
 // Chamber-facing scavenger hunt admin: hunt list, recent player submissions,
 // and the hunt builder (editor.tsx). Page access is admin-gated by the /admin
-// layout; NOTE the /api/hunts* routes themselves remain unauthenticated (local
-// posture) — gate them before public deployment.
+// layout; the /api/hunts, /api/hunts/reference, and submission-photo reads are
+// admin-gated in their own handlers (route handlers bypass layouts). The only
+// open hunt endpoint is /api/hunts/submit (player photo upload, no account).
 
 import type { Metadata } from "next";
 import Link from "next/link";

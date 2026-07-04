@@ -291,6 +291,9 @@ export const sessionCookie = {
   options: {
     httpOnly: true,
     sameSite: "lax" as const,
+    // Only send over HTTPS in production; a `secure` cookie is never sent over
+    // http://localhost, which would break dev login.
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: SESSION_DAYS * 86400,
   },
@@ -310,4 +313,18 @@ export async function getSessionUser(): Promise<User | null> {
 /** True when the user may edit the given listing/org id. */
 export function canEdit(user: User, id: string): boolean {
   return user.role === "admin" || user.linkedIds.includes(id);
+}
+
+/**
+ * Admin gate for route handlers: returns null when the caller is a signed-in
+ * admin, otherwise the 401/403 Response to return. Route handlers bypass the
+ * /admin layout, so any admin-only endpoint must call this itself.
+ */
+export async function requireAdmin(): Promise<Response | null> {
+  const user = await getSessionUser();
+  if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
+  if (user.role !== "admin") {
+    return Response.json({ error: "Chamber admins only" }, { status: 403 });
+  }
+  return null;
 }

@@ -3,12 +3,17 @@
 // POST multipart/form-data: photo (File), huntId, stopId
 // Saves .data/hunts/refs/<huntId>-<stopId>.<ext> and points the hunt record's
 // stop.referencePhoto at it (materializing a seed hunt into custom-hunts.json
-// if needed). Local-only app — no auth; see /api/hunts/route.ts.
+// if needed). Admin-only (this writes hunt content); players only reach
+// /api/hunts/submit.
 
 import { NextRequest } from "next/server";
+import { requireAdmin } from "@/lib/auth";
 import { MAX_PHOTO_BYTES, imageExtension, photoUrl, saveReferencePhoto } from "@/lib/hunt-store";
 
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   let form: FormData;
   try {
     form = await request.formData();

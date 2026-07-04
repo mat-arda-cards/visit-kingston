@@ -178,7 +178,7 @@ Self-hosted, server-only (node:crypto + fs + `next/headers`). Invite-based accou
 ### 4.2 Session token — stateless HMAC cookie
 - **Format:** `base64url(JSON{uid,exp}) + "." + base64url(HMAC-SHA256(payload, AUTH_SECRET))`. `exp` = `Date.now() + 30 days`.
 - **Verify** (`parseSessionToken`): split on `.`; recompute; length-guarded `timingSafeEqual`; parse; enforce `exp >= now`. No server-side session list.
-- **Cookie** (`sessionCookie`): name **`vk-session`**, `httpOnly`, `sameSite:"lax"`, `path:"/"`, `maxAge` 30 days. **No `secure:true`** (LAN/http posture; on the hardening list, §13).
+- **Cookie** (`sessionCookie`): name **`vk-session`**, `httpOnly`, `sameSite:"lax"`, `path:"/"`, `maxAge` 30 days, and `secure` in production (`NODE_ENV==="production"` → the `Secure` attribute; off in dev so `http://localhost` login works).
 - `getSessionUser()` reads the cookie, parses, and looks the uid up in the live user list — so **deleting a user invalidates their outstanding tokens** despite statelessness.
 - `secret()` **throws** if `AUTH_SECRET` is missing — auth cannot run unsigned.
 
@@ -331,9 +331,9 @@ Every route is `fs`/DB-backed and therefore effectively dynamic; only the feeds 
 | 12 | `/api/portal/users` | GET/POST | admin | User list (hash stripped) / admin password reset |
 | 13 | `/api/feeds/events` | GET | none, CORS `*` | Public events feed — JSON or iCalendar |
 | 14 | `/api/feeds/business/[id]` | GET | none, CORS `*` | One listing + computed `openNow` |
-| 15 | `/api/hunts` | GET/POST | **none** (stale comment) | Hunt list/merge + submissions; hunt CRUD |
-| 16 | `/api/hunts/photo` | GET | **none** | Stream a stored hunt image by sanitized path |
-| 17 | `/api/hunts/reference` | POST | **none** | Attach a stop reference photo (multipart) |
+| 15 | `/api/hunts` | GET/POST | **admin** | Hunt list/merge + submissions; hunt CRUD |
+| 16 | `/api/hunts/photo` | GET | refs public; `photos/` **admin** | Stream a stored hunt image by sanitized path |
+| 17 | `/api/hunts/reference` | POST | **admin** | Attach a stop reference photo (multipart) |
 | 18 | `/api/hunts/submit` | POST | none (public by design) | Player photo submission → verified/unverified |
 | 19 | `/api/survey` | POST / GET | POST none; **GET admin** | Save response / aggregate summary |
 | 20 | `/api/track` | POST | none | Analytics beacon; always `{ok:true}` |
@@ -474,11 +474,14 @@ Offline pipeline → `public/geo/street-parking.json` (segments classified free-
 
 **Intentionally unauthenticated** (by design): the public feeds (CORS `*`), the `?onDate=` deconfliction lookups, `/api/track` POST, `/api/survey` POST, `/api/ferry/{status,vessels,plan,reminder}`, `/api/hunts/submit`. `/api/ferry/{observe,accuracy}` have an *optional* `FERRY_OBSERVE_TOKEN`.
 
+**Done (July 2026):**
+- **Hunt admin API gated** — `/api/hunts` (GET + POST), `/api/hunts/reference`, and submission-photo reads (`/api/hunts/photo?p=photos/…`) now require an admin session via `requireAdmin()`. Reference photos (`refs/…`) stay public so players see "what you're looking for"; `/api/hunts/submit` stays open by design.
+- **`secure` session cookie** in production (see the cookie note above).
+
 **Pre-public hardening remaining:**
-1. **Gate the hunt admin API** (`/api/hunts` POST, `?submissions=`, `/api/hunts/reference`; consider `/api/hunts/photo`). The in-code "local-only, no auth" warning is now **false** — the app is deployed to Render, so anyone can create/overwrite hunts and read every player submission. **Highest priority.**
-2. Set `secure:true` on the session cookie and serve over HTTPS (Render already serves HTTPS; the flag is still off).
-3. CSRF tokens for portal mutations (current mitigation: `sameSite=lax` + JSON bodies).
-4. Consider invite expiry and admin-visible session revocation.
+1. CSRF tokens for portal mutations (current mitigation: `sameSite=lax` + JSON bodies).
+2. Consider invite expiry and admin-visible session revocation.
+3. Private-blob follow-up: in the Vercel/Blob config, submission images live in a *public* blob store, so their URLs are unguessable-but-public — move submissions to a private store or signed URLs if that deployment shape is used. (Not an issue on the current Render/filesystem deployment, where `/api/hunts/photo` gates them.)
 5. In file mode on a single instance the overlay writes are read-modify-write with no locking (last-write-wins) and the rate limiter is per-instance — both correct for the single-instance Render deploy, both wrong the moment a second instance exists (move to the DB + Upstash backends first).
 
 **Privacy posture** (a feature): no visitor cookies beyond side/session, no IPs stored, geo-pings opt-in + bounded + rounded + area-bucketed server-side, survey PII-free, `/admin` traffic never tracked (client skip + server drop), the survey aggregate GET now admin-gated.

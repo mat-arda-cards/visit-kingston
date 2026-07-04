@@ -1,10 +1,14 @@
 // Hunt CRUD + submissions listing for the admin builder.
 //
-// SECURITY NOTE: this app runs local-only for the Chamber (one laptop, no
-// public deployment), so there is NO auth on these endpoints. Before deploying
-// anywhere public, gate /api/hunts POST and ?submissions= behind admin auth.
+// Admin-only. Public play pages (/hunt, /hunt/[slug]) read hunt content from
+// the store directly server-side, and players never call this route — the only
+// unauthenticated hunt endpoint is /api/hunts/submit (photo upload). So both
+// GET (which can list player submissions via ?submissions=) and POST require an
+// admin session; the /admin layout gates the editor UI, this re-checks because
+// route handlers bypass layouts.
 
 import { NextRequest } from "next/server";
+import { requireAdmin } from "@/lib/auth";
 import {
   getAllHunts,
   isSafeId,
@@ -21,6 +25,9 @@ import {
  * GET /api/hunts?submissions=<huntId> → { submissions: [...] } newest first
  */
 export async function GET(request: NextRequest) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const submissionsFor = request.nextUrl.searchParams.get("submissions");
   if (submissionsFor) {
     if (!isSafeId(submissionsFor)) {
@@ -46,6 +53,9 @@ export async function GET(request: NextRequest) {
 
 /** POST /api/hunts — create or update a hunt from a full Hunt JSON body. */
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await request.json();
