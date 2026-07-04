@@ -17,6 +17,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { formatPacificTime } from "@/lib/time";
+import {
+  FERRY_DIRS,
+  REMINDER_LEAD_MIN,
+  reminderIcsUrl,
+  type FerryDir,
+} from "@/lib/ferry-reminder";
 
 interface Sailing {
   direction: "to-kingston" | "from-kingston";
@@ -64,6 +70,8 @@ const THEME: Record<
     expander: string;
     note: string;
     noteLink: string;
+    remind: string;
+    remindActive: string;
   }
 > = {
   light: {
@@ -86,6 +94,8 @@ const THEME: Record<
     expander: "text-tide-deep hover:text-sound",
     note: "text-ink-soft",
     noteLink: "underline",
+    remind: "text-tide-deep hover:text-sound",
+    remindActive: "text-fern",
   },
   dark: {
     root: "",
@@ -107,6 +117,8 @@ const THEME: Record<
     expander: "text-seaglass hover:text-white",
     note: "text-seaglass/80",
     noteLink: "text-white underline",
+    remind: "text-seaglass hover:text-white",
+    remindActive: "text-white",
   },
 };
 
@@ -152,19 +164,25 @@ function SpotsBadge({ space, t }: { space?: SailingSpace; t: Theme }) {
 
 function DirectionColumn({
   label,
+  dir,
   sailings,
   space,
   delayMin,
   now,
   expanded,
+  armed,
+  onToggleNotify,
   t,
 }: {
   label: string;
+  dir: FerryDir;
   sailings: Sailing[];
   space: SailingSpace[];
   delayMin: number | null;
   now: number;
   expanded: boolean;
+  armed: Set<string>;
+  onToggleNotify: (dir: FerryDir, departs: string) => void;
   t: Theme;
 }) {
   const upcoming = sailings
@@ -192,14 +210,40 @@ function DirectionColumn({
       {shown.length === 0 ? (
         <p className={`mt-2 text-sm ${t.done}`}>Done for today</p>
       ) : (
-        <ul className="mt-2 space-y-1.5">
-          {shown.map((s) => (
-            <li key={s.departs} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className={`text-lg font-semibold ${t.time}`}>{formatPacificTime(s.departs)}</span>
-              <span className={`text-sm ${t.countdown}`}>· {countdown(s.departs, now)}</span>
-              <SpotsBadge space={spaceFor(space, s.departs)} t={t} />
-            </li>
-          ))}
+        <ul className="mt-2 space-y-2">
+          {shown.map((s) => {
+            const key = `${dir}|${s.departs}`;
+            const isArmed = armed.has(key);
+            return (
+              <li key={s.departs} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className={`text-lg font-semibold ${t.time}`}>
+                  {formatPacificTime(s.departs)}
+                </span>
+                <span className={`text-sm ${t.countdown}`}>· {countdown(s.departs, now)}</span>
+                <SpotsBadge space={spaceFor(space, s.departs)} t={t} />
+                <span className="ml-auto flex items-center gap-3 text-xs font-medium">
+                  <a
+                    href={reminderIcsUrl(dir, s.departs)}
+                    className={`inline-flex items-center gap-1 ${t.remind}`}
+                    title={`Add to your calendar with a ${REMINDER_LEAD_MIN}-minute heads-up`}
+                    aria-label={`Add the ${formatPacificTime(s.departs)} sailing to your calendar`}
+                  >
+                    <span aria-hidden>📅</span> Calendar
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => onToggleNotify(dir, s.departs)}
+                    className={`inline-flex items-center gap-1 ${isArmed ? t.remindActive : t.remind}`}
+                    title={`Get a browser alert about ${REMINDER_LEAD_MIN} min before it leaves (keep this tab open)`}
+                    aria-pressed={isArmed}
+                    aria-label={`Notify me before the ${formatPacificTime(s.departs)} sailing`}
+                  >
+                    <span aria-hidden>🔔</span> {isArmed ? "Reminding" : "Remind"}
+                  </button>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -218,6 +262,83 @@ export function NextFerries({
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Opt-in in-page reminders: `armed` holds "dir|departs" keys; `firedRef` keeps
+  // a fired reminder from re-firing across the 20s ticks. Notifications only work
+  // while this tab is open — the calendar (.ics) link is the reliable path.
+  const [armed, setArmed] = useState<Set<string>>(() => new Set());
+  const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
+  const firedRef = useRef<Set<string>>(new Set());
+
+  async function toggleNotify(dir: FerryDir, departs: string) {
+    const key = `${dir}|${departs}`;
+    setNotifyMsg(null);
+    if (armed.has(key)) {
+      setArmed((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      return;
+    }
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotifyMsg("This browser can't show alerts — use Calendar instead.");
+      return;
+    }
+    let perm = Notification.permission;
+    if (perm === "default") {
+      try {
+        perm = await Notification.requestPermission();
+      } catch {
+        perm = "denied";
+      }
+    }
+    if (perm !== "granted") {
+      setNotifyMsg("Notifications are off — allow them for this site, or use Calendar instead.");
+      return;
+    }
+    firedRef.current.delete(key);
+    setArmed((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    setNotifyMsg(
+      `We'll alert you about ${REMINDER_LEAD_MIN} min before — keep this tab open. Calendar works even when it's closed.`,
+    );
+  }
+
+  // Fire due reminders on each tick while the tab is open.
+  useEffect(() => {
+    if (armed.size === 0) return;
+    const leadMs = REMINDER_LEAD_MIN * 60_000;
+    const toDisarm: string[] = [];
+    armed.forEach((key) => {
+      if (firedRef.current.has(key)) return;
+      const sep = key.indexOf("|");
+      const dir = key.slice(0, sep) as FerryDir;
+      const departs = key.slice(sep + 1);
+      const target = Date.parse(departs);
+      if (Number.isNaN(target)) return;
+      if (now >= target - leadMs && now <= target + 2 * 60_000) {
+        firedRef.current.add(key);
+        toDisarm.push(key);
+        if ("Notification" in window && Notification.permission === "granted") {
+          const mins = Math.max(0, Math.round((target - now) / 60_000));
+          new Notification("Ferry leaving soon", {
+            body: `${FERRY_DIRS[dir]?.label ?? "Ferry"} at ${formatPacificTime(departs)} — about ${mins} min. Time to head to the dock.`,
+            tag: key,
+          });
+        }
+      }
+    });
+    if (toDisarm.length > 0) {
+      setArmed((prev) => {
+        const next = new Set(prev);
+        toDisarm.forEach((k) => next.delete(k));
+        return next;
+      });
+    }
+  }, [now, armed]);
 
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), TICK_MS);
@@ -298,23 +419,34 @@ export function NextFerries({
       <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:gap-8">
         <DirectionColumn
           label="Edmonds"
+          dir="from-kingston"
           sailings={data.carFerry.sailings.filter((s) => s.direction === "from-kingston")}
           space={data.sailingSpace.kingston}
           delayMin={data.delays.fromKingston}
           now={now}
           expanded={expanded}
+          armed={armed}
+          onToggleNotify={toggleNotify}
           t={t}
         />
         <DirectionColumn
           label="Kingston"
+          dir="to-kingston"
           sailings={data.carFerry.sailings.filter((s) => s.direction === "to-kingston")}
-          space={data.sailingSpace.edmonds}
+          // Kingston-focused: only the Kingston-side wait/space is shown (the
+          // "Edmonds" column). Arrivals into Kingston don't show Edmonds-side
+          // drive-up space — that's the Edmonds car line, not a Kingston wait.
+          space={[]}
           delayMin={data.delays.toKingston}
           now={now}
           expanded={expanded}
+          armed={armed}
+          onToggleNotify={toggleNotify}
           t={t}
         />
       </div>
+
+      {notifyMsg && <p className={`mt-3 text-xs ${t.note}`}>{notifyMsg}</p>}
 
       <button
         onClick={() => setExpanded((v) => !v)}

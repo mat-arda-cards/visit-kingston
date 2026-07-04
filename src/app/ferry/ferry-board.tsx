@@ -228,7 +228,6 @@ export function FerryBoard({
             sailings={carToKingston}
             now={now}
             emptyNote="Done for today — first boat tomorrow morning."
-            footer={<TerminalNote status={data.terminals.edmonds} />}
           />
         </div>
         {!data.carFerry.live && (
