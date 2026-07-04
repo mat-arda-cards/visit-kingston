@@ -17,6 +17,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { formatPacificTime } from "@/lib/time";
+import type { WaterSide } from "@/lib/side";
 import {
   FERRY_DIRS,
   REMINDER_LEAD_MIN,
@@ -264,9 +265,11 @@ function DirectionColumn({
 export function NextFerries({
   initial,
   tone = "light",
+  side = "kingston",
 }: {
   initial: FerryStatus;
   tone?: Tone;
+  side?: WaterSide;
 }) {
   const t = THEME[tone];
   const [data, setData] = useState<FerryStatus>(initial);
@@ -435,7 +438,9 @@ export function NextFerries({
         </Link>
       </div>
 
-      {data.boardingPass.active && (
+      {/* The SR-104 boarding-pass line is a Kingston-DEPARTURE thing. Across the
+          water you board at Edmonds, so it doesn't apply — hide it on that side. */}
+      {side === "kingston" && data.boardingPass.active && (
         <div className={`mt-3 rounded-lg px-3 py-2 text-sm ${t.boarding}`}>
           🚗 <span className="font-semibold">Vehicle boarding pass in effect.</span> Drivers: get in
           the SR-104 line and take a pass — don&apos;t drive straight to the dock.
@@ -450,34 +455,48 @@ export function NextFerries({
         </div>
       )}
 
+      {/* Two directions. The DEPARTING side leads and is the only column that
+          shows live drive-up space — the side you're waiting to board from.
+          Kingston side → leaving Kingston (the "Edmonds" column) leads and shows
+          sailingSpace.kingston. Edmonds side → leaving Edmonds (the "Kingston"
+          column) leads and shows sailingSpace.edmonds. The arriving column shows
+          times only (space=[]). */}
       <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:gap-8">
-        <DirectionColumn
-          label="Edmonds"
-          dir="from-kingston"
-          sailings={data.carFerry.sailings.filter((s) => s.direction === "from-kingston")}
-          space={data.sailingSpace.kingston}
-          delayMin={data.delays.fromKingston}
-          now={now}
-          expanded={expanded}
-          armed={armed}
-          onToggleNotify={toggleNotify}
-          t={t}
-        />
-        <DirectionColumn
-          label="Kingston"
-          dir="to-kingston"
-          sailings={data.carFerry.sailings.filter((s) => s.direction === "to-kingston")}
-          // Kingston-focused: only the Kingston-side wait/space is shown (the
-          // "Edmonds" column). Arrivals into Kingston don't show Edmonds-side
-          // drive-up space — that's the Edmonds car line, not a Kingston wait.
-          space={[]}
-          delayMin={data.delays.toKingston}
-          now={now}
-          expanded={expanded}
-          armed={armed}
-          onToggleNotify={toggleNotify}
-          t={t}
-        />
+        {(() => {
+          const leavingKingston = (
+            <DirectionColumn
+              key="from-kingston"
+              label="Edmonds"
+              dir="from-kingston"
+              sailings={data.carFerry.sailings.filter((s) => s.direction === "from-kingston")}
+              space={side === "kingston" ? data.sailingSpace.kingston : []}
+              delayMin={data.delays.fromKingston}
+              now={now}
+              expanded={expanded}
+              armed={armed}
+              onToggleNotify={toggleNotify}
+              t={t}
+            />
+          );
+          const leavingEdmonds = (
+            <DirectionColumn
+              key="to-kingston"
+              label="Kingston"
+              dir="to-kingston"
+              sailings={data.carFerry.sailings.filter((s) => s.direction === "to-kingston")}
+              space={side === "edmonds" ? data.sailingSpace.edmonds : []}
+              delayMin={data.delays.toKingston}
+              now={now}
+              expanded={expanded}
+              armed={armed}
+              onToggleNotify={toggleNotify}
+              t={t}
+            />
+          );
+          return side === "edmonds"
+            ? [leavingEdmonds, leavingKingston]
+            : [leavingKingston, leavingEdmonds];
+        })()}
       </div>
 
       {/* Always mounted so screen readers announce the Remind outcome on change. */}

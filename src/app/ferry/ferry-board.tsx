@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Sailing, TerminalStatus } from "@/lib/types";
+import type { WaterSide } from "@/lib/side";
 import { formatPacificTime } from "@/lib/time";
 import { Badge, Card, ExternalLink } from "@/components/ui";
 
@@ -124,10 +125,12 @@ function RemainingList({ label, sailings }: { label: string; sailings: Sailing[]
 export function FerryBoard({
   initial,
   serverNow,
+  side = "kingston",
 }: {
   initial: FerryStatusPayload;
   /** ISO timestamp from the server render, so SSR and hydration agree. */
   serverNow: string;
+  side?: WaterSide;
 }) {
   const [data, setData] = useState<FerryStatusPayload>(initial);
   const [now, setNow] = useState<number>(() => Date.parse(serverNow));
@@ -215,20 +218,45 @@ export function FerryBoard({
             <Badge tone="coral">Schedule only</Badge>
           )}
         </div>
+        {/* The DEPARTING side leads and is the only column with a TerminalNote
+            (drive-up spaces + wait) — the terminal you'd actually be waiting at.
+            Kingston side → "Kingston to Edmonds" leads with the Kingston terminal
+            note; Edmonds side → "Edmonds to Kingston" leads with the Edmonds
+            terminal note. */}
         <div className="mt-4 grid gap-6 sm:grid-cols-2">
-          <DirectionColumn
-            label="Kingston to Edmonds"
-            sailings={carToEdmonds}
-            now={now}
-            emptyNote="Done for today — first boat tomorrow morning."
-            footer={<TerminalNote status={data.terminals.kingston} />}
-          />
-          <DirectionColumn
-            label="Edmonds to Kingston"
-            sailings={carToKingston}
-            now={now}
-            emptyNote="Done for today — first boat tomorrow morning."
-          />
+          {(() => {
+            const kingstonToEdmonds = (
+              <DirectionColumn
+                key="kingston-to-edmonds"
+                label="Kingston to Edmonds"
+                sailings={carToEdmonds}
+                now={now}
+                emptyNote="Done for today — first boat tomorrow morning."
+                footer={
+                  side === "kingston" ? (
+                    <TerminalNote status={data.terminals.kingston} />
+                  ) : undefined
+                }
+              />
+            );
+            const edmondsToKingston = (
+              <DirectionColumn
+                key="edmonds-to-kingston"
+                label="Edmonds to Kingston"
+                sailings={carToKingston}
+                now={now}
+                emptyNote="Done for today — first boat tomorrow morning."
+                footer={
+                  side === "edmonds" ? (
+                    <TerminalNote status={data.terminals.edmonds} />
+                  ) : undefined
+                }
+              />
+            );
+            return side === "edmonds"
+              ? [edmondsToKingston, kingstonToEdmonds]
+              : [kingstonToEdmonds, edmondsToKingston];
+          })()}
         </div>
         {!data.carFerry.live && (
           <p className="mt-4 text-sm text-ink-soft">

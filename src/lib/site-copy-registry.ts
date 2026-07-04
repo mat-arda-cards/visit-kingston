@@ -391,6 +391,99 @@ export const COPY_BLOCKS: CopyBlock[] = [
     label: "\"see the line map\" link label",
     fallback: "see the line map",
   },
+  // ---- Edmonds side (shown when the visitor sets/detects the Edmonds side) ----
+  {
+    key: "home.hero.edmonds.eyebrow",
+    page: "Home — Edmonds side",
+    label: "Hero eyebrow",
+    fallback: "Headed across the water?",
+  },
+  {
+    key: "home.hero.edmonds.title1",
+    page: "Home — Edmonds side",
+    label: "Hero headline, line 1 (before the “short sail” script word)",
+    fallback: "Kingston is a",
+  },
+  {
+    key: "home.hero.edmonds.title2",
+    page: "Home — Edmonds side",
+    label: "Hero headline, line 1 (after the “short sail” script word)",
+    fallback: "away.",
+  },
+  {
+    key: "home.hero.edmonds.title3",
+    page: "Home — Edmonds side",
+    label: "Hero headline, line 2",
+    fallback: "Plan the crossing, then the day.",
+  },
+  {
+    key: "home.hero.edmonds.intro",
+    page: "Home — Edmonds side",
+    label: "Hero intro",
+    multiline: true,
+    fallback:
+      "Catch the Edmonds–Kingston boat and you're minutes from our little town on Appletree Cove — food worth walking to, waterfront trails, and everything happening this week, from the folks who live here.",
+  },
+  {
+    key: "home.hero.edmonds.ctaPrimary",
+    page: "Home — Edmonds side",
+    label: "Primary button",
+    fallback: "Directions to the Edmonds dock →",
+  },
+  {
+    key: "home.hero.edmonds.ctaSecondary",
+    page: "Home — Edmonds side",
+    label: "Secondary button",
+    fallback: "Plan my Kingston day",
+  },
+  {
+    key: "ferry.header.edmonds.eyebrow",
+    page: "Ferry page — Edmonds side",
+    label: "Header eyebrow",
+    fallback: "Crossing to Kingston",
+  },
+  {
+    key: "ferry.header.edmonds.title",
+    page: "Ferry page — Edmonds side",
+    label: "Header title",
+    fallback: "Ferry times",
+  },
+  {
+    key: "ferry.header.edmonds.intro",
+    page: "Ferry page — Edmonds side",
+    label: "Header intro",
+    multiline: true,
+    fallback:
+      "From Edmonds, the car ferry reaches Kingston in about 30 minutes, every day, and walk-ons are always welcome — board at the Edmonds dock. There's also a passengers-only fast ferry from downtown Seattle's Pier 50 to Kingston in 39 minutes.",
+  },
+  {
+    key: "ferryLine.edmonds.title",
+    page: "Ferry line card — Edmonds side",
+    label: "Title",
+    fallback: "Driving to Kingston?",
+  },
+  {
+    key: "ferryLine.edmonds.body1",
+    page: "Ferry line card — Edmonds side",
+    label: "Body, paragraph 1",
+    rich: true,
+    fallback:
+      "You board the ferry at the **Edmonds terminal** — not Kingston. The Kingston SR-104 boarding-pass line only matters for the trip back.",
+  },
+  {
+    key: "ferryLine.edmonds.body2",
+    page: "Ferry line card — Edmonds side",
+    label: "Body, paragraph 2",
+    rich: true,
+    fallback:
+      "There are **no vehicle reservations** on this run, so in summer arrive early — the Edmonds car line can fill hours ahead of the boat you want.",
+  },
+  {
+    key: "ferryLine.edmonds.navButton",
+    page: "Ferry line card — Edmonds side",
+    label: "Navigate button",
+    fallback: "Directions to the Edmonds dock →",
+  },
   // Near-me (client)
   {
     key: "nearme.button.idle",

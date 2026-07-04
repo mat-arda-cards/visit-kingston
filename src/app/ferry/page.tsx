@@ -27,6 +27,8 @@ import { FerryBoard } from "./ferry-board";
 import { FerryVesselMap } from "@/components/ferry-vessel-map";
 import { FerryLineInfo } from "@/components/ferry-line-info";
 import { Sr104TrafficMap } from "@/components/sr104-traffic-map";
+import { getSide } from "@/lib/side-server";
+import { SideSwitcher } from "@/components/side-switcher";
 
 export const metadata: Metadata = { title: "Ferry" };
 
@@ -49,13 +51,14 @@ function transitDirectionsUrl(destination: string): string {
 
 export default async function FerryPage() {
   const hiddenPreview = await assertPageVisible("/ferry");
-  const [carFerry, kingston, edmonds, alerts, copy, ferryInfo] = await Promise.all([
+  const [carFerry, kingston, edmonds, alerts, copy, ferryInfo, side] = await Promise.all([
     getTodaysSailings(),
     getTerminalStatus("kingston"),
     getTerminalStatus("edmonds"),
     getRouteAlerts(),
     getCopyOverrides(),
     getFerryInfo(),
+    getSide(),
   ]);
   const fastFerry = getFastFerrySailings();
   const vessels = await getVesselLocations();
@@ -64,15 +67,31 @@ export default async function FerryPage() {
   return (
     <>
       {hiddenPreview && <HiddenPageBanner />}
-      <PageHeader
-        eyebrow={copyText(copy, "ferry.header.eyebrow", "Getting here and back")}
-        title={copyText(copy, "ferry.header.title", "Ferry times")}
-        intro={copyText(
-          copy,
-          "ferry.header.intro",
-          "Two boats serve Kingston: the Edmonds–Kingston car ferry — about 30 minutes, every day, walk-ons welcome — and a passengers-only fast ferry straight to downtown Seattle in 39 minutes.",
-        )}
-      />
+      {side === "edmonds" ? (
+        <PageHeader
+          eyebrow={copyText(copy, "ferry.header.edmonds.eyebrow", "Crossing to Kingston")}
+          title={copyText(copy, "ferry.header.edmonds.title", "Ferry times")}
+          intro={copyText(
+            copy,
+            "ferry.header.edmonds.intro",
+            "From Edmonds, the car ferry reaches Kingston in about 30 minutes, every day, and walk-ons are always welcome — board at the Edmonds dock. There's also a passengers-only fast ferry from downtown Seattle's Pier 50 to Kingston in 39 minutes.",
+          )}
+        />
+      ) : (
+        <PageHeader
+          eyebrow={copyText(copy, "ferry.header.eyebrow", "Getting here and back")}
+          title={copyText(copy, "ferry.header.title", "Ferry times")}
+          intro={copyText(
+            copy,
+            "ferry.header.intro",
+            "Two boats serve Kingston: the Edmonds–Kingston car ferry — about 30 minutes, every day, walk-ons welcome — and a passengers-only fast ferry straight to downtown Seattle in 39 minutes.",
+          )}
+        />
+      )}
+
+      <div className="mx-auto max-w-5xl px-4 pt-4">
+        <SideSwitcher side={side} tone="light" />
+      </div>
 
       {alerts.length > 0 && (
         <div className="mx-auto max-w-5xl px-4 pb-2">
@@ -94,27 +113,32 @@ export default async function FerryPage() {
       )}
 
       <div className="mx-auto max-w-5xl px-4 pt-2">
-        <FerryLineInfo />
+        <FerryLineInfo side={side} />
       </div>
 
       <Section title="Next boats" subtitle="Both routes, both directions. Updates every minute while you watch.">
-        <FerryBoard initial={initial} serverNow={new Date().toISOString()} />
+        <FerryBoard initial={initial} serverNow={new Date().toISOString()} side={side} />
       </Section>
 
-      <Section
-        id="ferry-line-map"
-        title="Getting in the ferry line"
-        subtitle="Kingston's SR 104 boarding-pass system, mapped — our take on WSDOT's traffic map."
-      >
-        {ferryInfo.boardingPass.currentNote.trim() && (
-          <div className="mb-4">
-            <Callout tone="coral" title="Heads up right now">
-              <p>{ferryInfo.boardingPass.currentNote}</p>
-            </Callout>
-          </div>
-        )}
-        <Sr104TrafficMap />
-      </Section>
+      {/* Kingston's SR-104 boarding-pass line is only relevant when you're
+          boarding AT Kingston. On the Edmonds side you board at the Edmonds dock
+          (the FerryLineInfo edmonds variant covers that), so hide this Section. */}
+      {side === "kingston" && (
+        <Section
+          id="ferry-line-map"
+          title="Getting in the ferry line"
+          subtitle="Kingston's SR 104 boarding-pass system, mapped — our take on WSDOT's traffic map."
+        >
+          {ferryInfo.boardingPass.currentNote.trim() && (
+            <div className="mb-4">
+              <Callout tone="coral" title="Heads up right now">
+                <p>{ferryInfo.boardingPass.currentNote}</p>
+              </Callout>
+            </div>
+          )}
+          <Sr104TrafficMap />
+        </Section>
+      )}
 
       <Section
         title="Where are the boats right now?"

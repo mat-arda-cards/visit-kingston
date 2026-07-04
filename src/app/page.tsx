@@ -6,10 +6,12 @@ import { getEvents } from "@/lib/stores/event-store";
 import { getCopyOverrides, copyText, getHiddenPaths } from "@/lib/stores/site-store";
 import { getFerryStatusSnapshot } from "@/lib/ferry-status";
 import { formatPacificDate, formatPacificTime, todayPacific } from "@/lib/time";
-import { Badge, Card, ExternalLink, Section } from "@/components/ui";
+import { Badge, Card, ExternalLink, Section, mapDirectionsUrl } from "@/components/ui";
 import { VisitorSurvey } from "@/components/visitor-survey";
 import { FerryLineInfo } from "@/components/ferry-line-info";
 import { NextFerries } from "@/components/next-ferries";
+import { SideSwitcher } from "@/components/side-switcher";
+import { getSide } from "@/lib/side-server";
 
 export const revalidate = 60;
 
@@ -37,13 +39,14 @@ function nextDeparture(
 }
 
 export default async function Home() {
-  const [ferry, forecast, tides, events, copy, hiddenPaths] = await Promise.all([
+  const [ferry, forecast, tides, events, copy, hiddenPaths, side] = await Promise.all([
     getFerryStatusSnapshot(),
     getForecast(2),
     getTodaysTides(),
     getEvents(),
     getCopyOverrides(),
     getHiddenPaths(),
+    getSide(),
   ]);
   const fastFerry = ferry.fastFerry;
   // Admin-hidden pages drop out of the feature grid.
@@ -78,36 +81,83 @@ export default async function Home() {
           className="absolute inset-0 -z-10 bg-gradient-to-b from-sound-deep/95 via-sound-deep/80 to-tide-deep/75"
         />
         <div className="mx-auto max-w-5xl px-4 pt-14 pb-10 sm:pt-20 sm:pb-16">
-          <p className="font-nav text-sm font-semibold tracking-[0.25em] text-seaglass uppercase">
-            {copyText(copy, "home.hero.eyebrow", "Gateway to the Kitsap & Olympic Peninsulas")}
-          </p>
-          <h1 className="font-display mt-3 max-w-2xl text-5xl leading-tight font-semibold sm:text-6xl">
-            {copyText(copy, "home.hero.title1", "You made the boat.")}
-            <br />
-            {copyText(copy, "home.hero.title2", "Now make the most of")}{" "}
-            <span className="font-script text-[1.15em] font-normal">Kingston</span>.
-          </h1>
-          <p className="mt-4 max-w-xl text-lg text-white">
-            {copyText(
-              copy,
-              "home.hero.intro",
-              "Ferry times, food worth walking to, and everything happening in our little town on Appletree Cove — from the folks who live here.",
-            )}
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            <Link
-              href="/ferry"
-              className="rounded-full bg-coral px-6 py-3 font-semibold text-white shadow hover:bg-coral-deep"
-            >
-              {copyText(copy, "home.hero.ctaPrimary", "Next boats →")}
-            </Link>
-            <Link
-              href="/itineraries"
-              className="rounded-full border border-seaglass/60 px-6 py-3 font-semibold text-white hover:bg-white/10"
-            >
-              {copyText(copy, "home.hero.ctaSecondary", "Plan my day")}
-            </Link>
-          </div>
+          {/* Side control up top so it's visible without scrolling — flip
+              Kingston/Edmonds or auto-detect. */}
+          <SideSwitcher side={side} tone="dark" className="mb-6" />
+          {side === "edmonds" ? (
+            <>
+              <p className="font-nav text-sm font-semibold tracking-[0.25em] text-seaglass uppercase">
+                {copyText(copy, "home.hero.edmonds.eyebrow", "Headed across the water?")}
+              </p>
+              <h1 className="font-display mt-3 max-w-2xl text-5xl leading-tight font-semibold sm:text-6xl">
+                {copyText(copy, "home.hero.edmonds.title1", "Kingston is a")}{" "}
+                <span className="font-script text-[1.15em] font-normal">short sail</span>{" "}
+                {copyText(copy, "home.hero.edmonds.title2", "away.")}
+                <br />
+                {copyText(copy, "home.hero.edmonds.title3", "Plan the crossing, then the day.")}
+              </h1>
+              <p className="mt-4 max-w-xl text-lg text-white">
+                {copyText(
+                  copy,
+                  "home.hero.edmonds.intro",
+                  "Catch the Edmonds–Kingston boat and you're minutes from our little town on Appletree Cove — food worth walking to, waterfront trails, and everything happening this week, from the folks who live here.",
+                )}
+              </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <a
+                  href={mapDirectionsUrl("Edmonds Ferry Terminal, Edmonds, WA", "driving")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-full bg-coral px-6 py-3 font-semibold text-white shadow hover:bg-coral-deep"
+                >
+                  {copyText(
+                    copy,
+                    "home.hero.edmonds.ctaPrimary",
+                    "Directions to the Edmonds dock →",
+                  )}
+                </a>
+                <Link
+                  href="/itineraries"
+                  className="rounded-full border border-seaglass/60 px-6 py-3 font-semibold text-white hover:bg-white/10"
+                >
+                  {copyText(copy, "home.hero.edmonds.ctaSecondary", "Plan my Kingston day")}
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="font-nav text-sm font-semibold tracking-[0.25em] text-seaglass uppercase">
+                {copyText(copy, "home.hero.eyebrow", "Gateway to the Kitsap & Olympic Peninsulas")}
+              </p>
+              <h1 className="font-display mt-3 max-w-2xl text-5xl leading-tight font-semibold sm:text-6xl">
+                {copyText(copy, "home.hero.title1", "You made the boat.")}
+                <br />
+                {copyText(copy, "home.hero.title2", "Now make the most of")}{" "}
+                <span className="font-script text-[1.15em] font-normal">Kingston</span>.
+              </h1>
+              <p className="mt-4 max-w-xl text-lg text-white">
+                {copyText(
+                  copy,
+                  "home.hero.intro",
+                  "Ferry times, food worth walking to, and everything happening in our little town on Appletree Cove — from the folks who live here.",
+                )}
+              </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <Link
+                  href="/ferry"
+                  className="rounded-full bg-coral px-6 py-3 font-semibold text-white shadow hover:bg-coral-deep"
+                >
+                  {copyText(copy, "home.hero.ctaPrimary", "Next boats →")}
+                </Link>
+                <Link
+                  href="/itineraries"
+                  className="rounded-full border border-seaglass/60 px-6 py-3 font-semibold text-white hover:bg-white/10"
+                >
+                  {copyText(copy, "home.hero.ctaSecondary", "Plan my day")}
+                </Link>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Live strip — the full ferry widget (delays, car space, alerts, boarding
@@ -115,7 +165,7 @@ export default async function Home() {
             summary is lost. */}
         <div className="border-t border-white/15 bg-sound-deep/85">
           <div className="mx-auto max-w-5xl px-4 py-5">
-            <NextFerries initial={ferry} tone="dark" />
+            <NextFerries initial={ferry} tone="dark" side={side} />
             <div className="mt-4 flex flex-wrap items-baseline gap-x-8 gap-y-2 border-t border-white/10 pt-4 text-sm">
               <div className="flex items-baseline gap-2">
                 <span className="text-seaglass">
@@ -140,7 +190,7 @@ export default async function Home() {
 
       {/* Getting in the ferry line */}
       <Section>
-        <FerryLineInfo />
+        <FerryLineInfo side={side} />
       </Section>
 
       {/* Coming up */}

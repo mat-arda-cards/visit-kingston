@@ -16,11 +16,66 @@ import { copyText, getCopyOverrides } from "@/lib/stores/site-store";
 import { getEffectiveBoardingPass } from "@/lib/stores/boarding-pass-store";
 import { getTerminalStatus } from "@/lib/wsf";
 import { ferryLineNavUrl, lineBacksPastBarberCutoff } from "@/lib/ferry-line";
+import type { WaterSide } from "@/lib/side";
 
 const TERMINAL = "Kingston Ferry Terminal, Kingston, WA 98346";
+const EDMONDS_TERMINAL = "Edmonds Ferry Terminal, Edmonds, WA";
 
-export async function FerryLineInfo({ className = "" }: { className?: string }) {
+export async function FerryLineInfo({
+  className = "",
+  side = "kingston",
+}: {
+  className?: string;
+  side?: WaterSide;
+}) {
   const copy = await getCopyOverrides();
+
+  // Across the water you board at EDMONDS — Kingston's SR-104 boarding-pass line
+  // only matters for the trip back. Show directions to the Edmonds dock instead.
+  if (side === "edmonds") {
+    return (
+      <div className={`rounded-2xl border border-coral/40 bg-coral/5 p-5 ${className}`}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-lg font-semibold text-sound-deep">
+              <span aria-hidden>🚗</span>{" "}
+              {copyText(copy, "ferryLine.edmonds.title", "Driving to Kingston?")}
+            </p>
+            <p className="mt-1 text-sm text-ink-soft">
+              <RichText
+                text={copyText(
+                  copy,
+                  "ferryLine.edmonds.body1",
+                  "You board the ferry at the **Edmonds terminal** — not Kingston. The Kingston SR-104 boarding-pass line only matters for the trip back.",
+                )}
+              />
+            </p>
+            <p className="mt-1.5 text-sm text-ink-soft">
+              <RichText
+                text={copyText(
+                  copy,
+                  "ferryLine.edmonds.body2",
+                  "There are **no vehicle reservations** on this run, so in summer arrive early — the Edmonds car line can fill hours ahead of the boat you want.",
+                )}
+              />
+            </p>
+          </div>
+
+          <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+            <a
+              href={mapDirectionsUrl(EDMONDS_TERMINAL, "driving")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-full bg-coral px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-coral-deep"
+            >
+              {copyText(copy, "ferryLine.edmonds.navButton", "Directions to the Edmonds dock →")}
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const pass = await getEffectiveBoardingPass();
   const kingston = await getTerminalStatus("kingston");
   // Over a 2-hour driver wait means the line is past Barber Cutoff — route the
