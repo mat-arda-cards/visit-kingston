@@ -135,6 +135,16 @@ function flatLatLngs(raw: unknown): LatLng[] {
   return arr as LatLng[];
 }
 
+// Leaflet's .bindTooltip(string)/.setTooltipContent(string) assign innerHTML, so
+// any dynamic text (feature title / admin label) must be HTML-escaped first, or
+// an admin could self-XSS with e.g. `<img src=x onerror=…>` in a label field.
+function escHtml(s: string): string {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c,
+  );
+}
+
 function randomId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -452,18 +462,20 @@ export function MapBuilder({
       layer = L.marker(f.point, { icon: markerIcon(L, f, false) })
         .addTo(map)
         .bindTooltip(
-          resolveLabel({ title: f.title, category: f.category, kind: f.kind, label: f.label })
-            .text,
+          escHtml(
+            resolveLabel({ title: f.title, category: f.category, kind: f.kind, label: f.label })
+              .text,
+          ),
           { direction: "top", offset: [0, -14] },
         );
     } else if ((f.kind === "line" || f.kind === "trail") && f.path && f.path.length >= 2) {
       layer = L.polyline(f.path, shapeStyle(f, false))
         .addTo(map)
-        .bindTooltip(f.title, { sticky: true });
+        .bindTooltip(escHtml(f.title), { sticky: true });
     } else if (f.kind === "area" && f.polygon && f.polygon.length >= 3) {
       layer = L.polygon(f.polygon, shapeStyle(f, false))
         .addTo(map)
-        .bindTooltip(f.title, { sticky: true });
+        .bindTooltip(escHtml(f.title), { sticky: true });
     }
     if (!layer) return null;
 
@@ -678,17 +690,19 @@ export function MapBuilder({
       );
       // Live-preview the effective label text in the hover tooltip as the admin types.
       (layer as unknown as Marker).setTooltipContent(
-        resolveLabel({
-          title: draft.title,
-          category: draft.category,
-          kind: "marker",
-          label: {
-            text: draft.labelText || undefined,
-            show: draft.labelShow,
-            dir: draft.labelDir,
-            priority: draft.labelPriority ? Number(draft.labelPriority) : undefined,
-          },
-        }).text,
+        escHtml(
+          resolveLabel({
+            title: draft.title,
+            category: draft.category,
+            kind: "marker",
+            label: {
+              text: draft.labelText || undefined,
+              show: draft.labelShow,
+              dir: draft.labelDir,
+              priority: draft.labelPriority ? Number(draft.labelPriority) : undefined,
+            },
+          }).text,
+        ),
       );
     } else {
       (layer as unknown as Polyline).setStyle(shapeStyle(styled, selected));

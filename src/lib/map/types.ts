@@ -170,7 +170,11 @@ export function shortenTitle(title: string): string {
     // Break on the last word boundary unless that leaves too little (< 8 chars),
     // in which case hard-cut. `>= 8` so a boundary exactly at 8 still wins
     // (avoids ugly mid-word cuts like "Downtown Waterfron…").
-    t = (sp >= 8 ? cut.slice(0, sp) : cut).replace(/\s+$/, "") + "…";
+    t =
+      (sp >= 8 ? cut.slice(0, sp) : cut)
+        .replace(/\s+$/, "")
+        .replace(/[\uD800-\uDBFF]$/, "") + // drop a trailing lone high surrogate (split emoji)
+      "…";
   }
   return t;
 }
@@ -189,7 +193,10 @@ export function resolveLabel(input: {
   const isShape =
     input.kind === "line" || input.kind === "trail" || input.kind === "area";
   return {
-    text: l.text?.trim() || shortenTitle(input.title),
+    // Fall back to the raw trimmed title if shortening collapses to "" (e.g. a
+    // parenthetical-only title) so a chip is never empty — an empty chip is
+    // invisible yet still occupies a declutter slot and could hide a neighbor.
+    text: l.text?.trim() || shortenTitle(input.title) || input.title.trim(),
     show: l.show ?? (isShape ? "off" : "auto"),
     dir: l.dir ?? "auto",
     priority: clampNum(

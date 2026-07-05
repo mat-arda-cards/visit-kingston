@@ -378,7 +378,7 @@ export function FeatureMap({
         latlng: [number, number],
         lab: ReturnType<typeof resolveLabel>,
       ) => {
-        if (lab.show === "off") return;
+        if (lab.show === "off" || !lab.text) return; // never build an empty chip (occupies a declutter slot)
         const icon = L.divIcon({
           className: "fm-label-wrap",
           html: `<span class="fm-label fm-label--${
@@ -654,7 +654,9 @@ export function FeatureMap({
         const bounds = L.latLngBounds(pts);
         const spanKm = bounds.getNorthWest().distanceTo(bounds.getSouthEast()) / 1000;
         if (spanKm <= 4) {
-          map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
+          // animate:false → map state is final synchronously, so the initial
+          // declutter below reads the fitted zoom/bounds (no label pop-in).
+          map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16, animate: false });
         }
       }
 
