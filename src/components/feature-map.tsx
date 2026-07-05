@@ -320,6 +320,7 @@ export function FeatureMap({
   const labelsRef = useRef<LabelRec[]>([]);
   const rafRef = useRef<number | null>(null);
   const moveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
   const [data, setData] = useState<ResolvedMapView | null>(resolved ?? null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     resolved ? "ready" : "loading",
@@ -458,6 +459,10 @@ export function FeatureMap({
         }
         // priority desc, tie-break by lat for deterministic frames (no flicker).
         cands.sort((a, b) => b.r.priority - a.r.priority || a.r.latlng[0] - b.r.latlng[0]);
+        const size = m.getSize();
+        const onScreen = (b: LabelBox) =>
+          b.x0 >= 2 && b.y0 >= 2 && b.x1 <= size.x - 2 && b.y1 <= size.y - 2;
+        const free = (b: LabelBox) => !placed.some((q) => labelBoxesOverlap(b, q));
         const placed: LabelBox[] = [];
         const show: { r: LabelRec; dir: LabelDir }[] = [];
         for (const { r, px, py } of cands) {
@@ -468,14 +473,25 @@ export function FeatureMap({
           // An `auto` label tries 4 directions; a fixed one has a single choice.
           const dirs = r.dir === "auto" ? LABEL_AUTO_DIRS : [r.dir];
           let pick: { dir: LabelDir; box: LabelBox } | null = null;
+          // Prefer a direction that both stays on-screen and clears its neighbors…
           for (const d of dirs) {
             const box = boxFor(d);
-            if (!placed.some((q) => labelBoxesOverlap(box, q))) {
+            if (onScreen(box) && free(box)) {
               pick = { dir: d, box };
               break;
             }
           }
-          // Forced-on labels always show — fall back to their first direction.
+          // …then settle for any non-overlapping one (may clip a map edge)…
+          if (!pick) {
+            for (const d of dirs) {
+              const box = boxFor(d);
+              if (free(box)) {
+                pick = { dir: d, box };
+                break;
+              }
+            }
+          }
+          // …forced-on labels always show, at their first direction.
           if (!pick && r.show === "on") pick = { dir: dirs[0], box: boxFor(dirs[0]) };
           if (pick) {
             placed.push(pick.box);
@@ -693,6 +709,19 @@ export function FeatureMap({
       measureLabels();
       declutter();
       map.on("zoomend moveend", scheduleDeclutter);
+      // The container often has no width when this effect runs (below the fold /
+      // mid-hydration), leaving Leaflet size.x = 0 → getBounds() zero-width → every
+      // label culled, and it never recovers on its own. A ResizeObserver re-syncs
+      // Leaflet's size and re-declutters whenever the container is actually sized
+      // (layout settles, scrolled into view, viewport resize).
+      roRef.current?.disconnect();
+      const ro = new ResizeObserver(() => {
+        if (mapRef.current !== map) return; // stale map (StrictMode remount)
+        map.invalidateSize({ animate: false });
+        scheduleDeclutter();
+      });
+      ro.observe(containerRef.current);
+      roRef.current = ro;
 
       // ---- built-ins: streets (fetched here) ----
       if (data.builtins.streets) {
@@ -771,6 +800,8 @@ export function FeatureMap({
       rafRef.current = null;
       if (moveTimerRef.current) clearTimeout(moveTimerRef.current);
       moveTimerRef.current = null;
+      roRef.current?.disconnect();
+      roRef.current = null;
       labelsRef.current = [];
       mapRef.current?.remove(); // also drops the zoomend/moveend handlers
       mapRef.current = null;
