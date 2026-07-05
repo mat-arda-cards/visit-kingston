@@ -142,6 +142,8 @@ interface LabelRec {
   priority: number;
   w: number;
   h: number;
+  /** Direction currently applied to the DOM — declutter may re-place an `auto` label. */
+  curDir: LabelDir;
 }
 
 /** Top-left of the label box relative to the pin's container point, per direction.
@@ -164,6 +166,21 @@ function labelZoomThreshold(priority: number): number {
   if (priority >= 80) return 13; // stars/viewpoints survive town-wide
   if (priority >= 45) return 15; // restaurants/mid appear near the downtown fit zoom
   return 16; // restroom/parking only when fully zoomed in
+}
+
+interface LabelBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** Directions an `auto` label tries, in preference order, before giving up. */
+const LABEL_AUTO_DIRS: LabelDir[] = ["top", "right", "bottom", "left"];
+
+/** AABB overlap test with a 2px gutter. */
+function labelBoxesOverlap(a: LabelBox, b: LabelBox): boolean {
+  return !(a.x1 + 2 < b.x0 || a.x0 - 2 > b.x1 || a.y1 + 2 < b.y0 || a.y0 - 2 > b.y1);
 }
 
 /** Rounded teardrop divIcon: an emoji chip on a white pin with a colored ring. */
@@ -395,7 +412,14 @@ export function FeatureMap({
         }).addTo(map);
         const el =
           marker.getElement()?.querySelector<HTMLElement>(".fm-label") ?? null;
-        labelsRef.current.push({ el, latlng, ...lab, w: 0, h: 18 });
+        labelsRef.current.push({
+          el,
+          latlng,
+          ...lab,
+          w: 0,
+          h: 18,
+          curDir: lab.dir === "auto" ? "top" : lab.dir,
+        });
       };
 
       // Measure every chip's box ONCE, batched (reads only) — emoji/CJK/RTL make
@@ -417,12 +441,7 @@ export function FeatureMap({
         if (!m) return;
         const z = m.getZoom();
         const bounds = m.getBounds().pad(0.15);
-        const cands: (LabelRec & {
-          x0: number;
-          y0: number;
-          x1: number;
-          y1: number;
-        })[] = [];
+        const cands: { r: LabelRec; px: number; py: number }[] = [];
         const hide: LabelRec[] = [];
         for (const r of labelsRef.current) {
           if (!r.el) continue;
@@ -435,38 +454,46 @@ export function FeatureMap({
             continue;
           }
           const p = m.latLngToContainerPoint(r.latlng);
-          const [dx, dy] = labelBoxOffset(r.dir, r.w, r.h);
-          cands.push({
-            ...r,
-            x0: p.x + dx,
-            y0: p.y + dy,
-            x1: p.x + dx + r.w,
-            y1: p.y + dy + r.h,
-          });
+          cands.push({ r, px: p.x, py: p.y });
         }
         // priority desc, tie-break by lat for deterministic frames (no flicker).
-        cands.sort((a, b) => b.priority - a.priority || a.latlng[0] - b.latlng[0]);
-        const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
-        const show: LabelRec[] = [];
-        for (const c of cands) {
-          const clash = placed.some(
-            (p) =>
-              !(
-                c.x1 + 2 < p.x0 ||
-                c.x0 - 2 > p.x1 ||
-                c.y1 + 2 < p.y0 ||
-                c.y0 - 2 > p.y1
-              ),
-          );
-          if (c.show === "on" || !clash) {
-            placed.push({ x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 });
-            show.push(c);
+        cands.sort((a, b) => b.r.priority - a.r.priority || a.r.latlng[0] - b.r.latlng[0]);
+        const placed: LabelBox[] = [];
+        const show: { r: LabelRec; dir: LabelDir }[] = [];
+        for (const { r, px, py } of cands) {
+          const boxFor = (d: LabelDir): LabelBox => {
+            const [dx, dy] = labelBoxOffset(d, r.w, r.h);
+            return { x0: px + dx, y0: py + dy, x1: px + dx + r.w, y1: py + dy + r.h };
+          };
+          // An `auto` label tries 4 directions; a fixed one has a single choice.
+          const dirs = r.dir === "auto" ? LABEL_AUTO_DIRS : [r.dir];
+          let pick: { dir: LabelDir; box: LabelBox } | null = null;
+          for (const d of dirs) {
+            const box = boxFor(d);
+            if (!placed.some((q) => labelBoxesOverlap(box, q))) {
+              pick = { dir: d, box };
+              break;
+            }
+          }
+          // Forced-on labels always show — fall back to their first direction.
+          if (!pick && r.show === "on") pick = { dir: dirs[0], box: boxFor(dirs[0]) };
+          if (pick) {
+            placed.push(pick.box);
+            show.push({ r, dir: pick.dir });
           } else {
-            hide.push(c);
+            hide.push(r);
           }
         }
+        // Writes only, after all reads (no layout thrash).
         for (const r of hide) if (r.el) r.el.style.display = "none";
-        for (const r of show) if (r.el) r.el.style.display = "";
+        for (const { r, dir } of show) {
+          if (!r.el) continue;
+          r.el.style.display = "";
+          if (r.curDir !== dir) {
+            r.el.className = `fm-label fm-label--${dir}`;
+            r.curDir = dir;
+          }
+        }
       };
 
       const scheduleDeclutter = () => {
