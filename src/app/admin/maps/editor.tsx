@@ -47,11 +47,15 @@ import {
   PARKING_TYPES,
   parkingTypeInfo,
   featureImages,
+  resolveLabel,
+  shortenTitle,
   type FeatureKind,
   type MapFeature,
   type MapView,
   type ParkingType,
   type ResolvedMapView,
+  type LabelShow,
+  type LabelDir,
 } from "@/lib/map/types";
 import { Badge } from "@/components/ui";
 
@@ -152,6 +156,11 @@ type Draft = {
   paymentLink: string;
   paymentNotes: string;
   timeLimit: string;
+  // On-map label (markers). Stored as strings for the form inputs.
+  labelText: string;
+  labelShow: LabelShow;
+  labelDir: LabelDir;
+  labelPriority: string;
 };
 
 function toDraft(f: MapFeature): Draft {
@@ -172,6 +181,10 @@ function toDraft(f: MapFeature): Draft {
     paymentLink: p?.paymentLink ?? "",
     paymentNotes: p?.paymentNotes ?? "",
     timeLimit: p?.timeLimit ?? "",
+    labelText: f.label?.text ?? "",
+    labelShow: f.label?.show ?? "auto",
+    labelDir: f.label?.dir ?? "auto",
+    labelPriority: f.label?.priority != null ? String(f.label.priority) : "",
   };
 }
 
@@ -438,7 +451,11 @@ export function MapBuilder({
     if (f.kind === "marker" && f.point) {
       layer = L.marker(f.point, { icon: markerIcon(L, f, false) })
         .addTo(map)
-        .bindTooltip(f.title, { direction: "top", offset: [0, -14] });
+        .bindTooltip(
+          resolveLabel({ title: f.title, category: f.category, kind: f.kind, label: f.label })
+            .text,
+          { direction: "top", offset: [0, -14] },
+        );
     } else if ((f.kind === "line" || f.kind === "trail") && f.path && f.path.length >= 2) {
       layer = L.polyline(f.path, shapeStyle(f, false))
         .addTo(map)
@@ -659,11 +676,25 @@ export function MapBuilder({
       (layer as unknown as Marker).setIcon(
         markerIcon(L, { category: draft.category, color: draft.color, parkingType: draft.parkingType }, selected),
       );
+      // Live-preview the effective label text in the hover tooltip as the admin types.
+      (layer as unknown as Marker).setTooltipContent(
+        resolveLabel({
+          title: draft.title,
+          category: draft.category,
+          kind: "marker",
+          label: {
+            text: draft.labelText || undefined,
+            show: draft.labelShow,
+            dir: draft.labelDir,
+            priority: draft.labelPriority ? Number(draft.labelPriority) : undefined,
+          },
+        }).text,
+      );
     } else {
       (layer as unknown as Polyline).setStyle(shapeStyle(styled, selected));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.color, draft?.parkingType, draft?.category]);
+  }, [draft?.color, draft?.parkingType, draft?.category, draft?.title, draft?.labelText]);
 
   /* ---------------- selection ---------------- */
 
@@ -950,6 +981,27 @@ export function MapBuilder({
       : null;
     const images = draft.images.filter(Boolean);
 
+    // On-map label (markers only). Persist only when a sub-field is non-default;
+    // mirrors the API route's validation so client and server agree.
+    const labelText = draft.labelText.trim().slice(0, 40);
+    const labelPri =
+      draft.labelPriority.trim() === ""
+        ? 0
+        : Math.max(-50, Math.min(50, Math.round(Number(draft.labelPriority) || 0)));
+    const label =
+      kind === "marker" &&
+      (labelText ||
+        draft.labelShow !== "auto" ||
+        draft.labelDir !== "auto" ||
+        labelPri !== 0)
+        ? {
+            ...(labelText ? { text: labelText } : {}),
+            ...(draft.labelShow !== "auto" ? { show: draft.labelShow } : {}),
+            ...(draft.labelDir !== "auto" ? { dir: draft.labelDir } : {}),
+            ...(labelPri !== 0 ? { priority: labelPri } : {}),
+          }
+        : null;
+
     const feature: MapFeature = {
       id: selectedId,
       kind,
@@ -957,6 +1009,7 @@ export function MapBuilder({
       views: draft.views,
       ...(draft.notes.trim() ? { notes: draft.notes.trim() } : {}),
       ...(kind === "marker" && draft.category ? { category: draft.category } : {}),
+      ...(label ? { label } : {}),
       // Parking color is automatic — don't persist a manual color alongside it.
       ...(!parking && draft.color ? { color: draft.color } : {}),
       ...(parking ? { parking } : {}),
@@ -1436,6 +1489,76 @@ export function MapBuilder({
             ))}
           </select>
         </Field>
+      )}
+
+      {draft.kind === "marker" && (
+        <div className="rounded-xl border border-sand bg-shell/40 p-3">
+          <span className="text-sm font-medium text-ink">Map label</span>
+          <p className="mt-0.5 text-xs text-ink-soft">
+            The name shown on the map. Labels declutter by zoom — zoom in to see more.
+          </p>
+          <div className="mt-2 space-y-2.5">
+            <Field label="Short label">
+              <input
+                className={INPUT}
+                value={draft.labelText}
+                placeholder={shortenTitle(draft.title) || "auto from title"}
+                onChange={(e) => patchDraft({ labelText: e.target.value })}
+              />
+            </Field>
+            <div>
+              <span className="text-sm font-medium text-ink">Show</span>
+              <div className="mt-1.5 flex gap-2">
+                {(
+                  [
+                    ["auto", "Auto"],
+                    ["on", "Always"],
+                    ["off", "Hidden"],
+                  ] as [LabelShow, string][]
+                ).map(([val, lbl]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => patchDraft({ labelShow: val })}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      draft.labelShow === val
+                        ? "border-tide bg-tide/10 text-tide-deep"
+                        : "border-sand bg-white text-ink-soft hover:bg-shell"
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Placement">
+                <select
+                  className={INPUT}
+                  value={draft.labelDir}
+                  onChange={(e) => patchDraft({ labelDir: e.target.value as LabelDir })}
+                >
+                  <option value="auto">Auto</option>
+                  <option value="top">Top</option>
+                  <option value="right">Right</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="left">Left</option>
+                </select>
+              </Field>
+              <Field label="Priority (−50…50)">
+                <input
+                  className={INPUT}
+                  type="number"
+                  min={-50}
+                  max={50}
+                  value={draft.labelPriority}
+                  placeholder="0"
+                  onChange={(e) => patchDraft({ labelPriority: e.target.value })}
+                />
+              </Field>
+            </div>
+          </div>
+        </div>
       )}
 
       {draft.parkingType ? (

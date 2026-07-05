@@ -13,7 +13,15 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import type { FeatureKind, MapFeature, ParkingMeta, ParkingType } from "@/lib/map/types";
+import type {
+  FeatureKind,
+  MapFeature,
+  MapLabel,
+  LabelShow,
+  LabelDir,
+  ParkingMeta,
+  ParkingType,
+} from "@/lib/map/types";
 import { PARKING_TYPES } from "@/lib/map/types";
 import { deleteMapFeature, getMapFeatures, saveMapFeature } from "@/lib/stores/map-store";
 import { getMapViews } from "@/lib/stores/map-store";
@@ -200,12 +208,44 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // label: on-map name-label overrides. Persist only non-default sub-fields so
+  // payloads stay lean and unset fields fall back to smart defaults.
+  const SHOW = new Set(["auto", "on", "off"]);
+  const DIR = new Set(["auto", "top", "right", "bottom", "left"]);
+  let label: MapLabel | undefined;
+  if (body.label && typeof body.label === "object" && !Array.isArray(body.label)) {
+    const m = body.label as Record<string, unknown>;
+    const text =
+      typeof m.text === "string" && m.text.trim() ? m.text.trim().slice(0, 40) : undefined;
+    const show =
+      typeof m.show === "string" && SHOW.has(m.show) ? (m.show as LabelShow) : undefined;
+    const dir = typeof m.dir === "string" && DIR.has(m.dir) ? (m.dir as LabelDir) : undefined;
+    const priority =
+      typeof m.priority === "number" && Number.isFinite(m.priority)
+        ? Math.max(-50, Math.min(50, Math.round(m.priority)))
+        : undefined;
+    if (
+      text ||
+      (show && show !== "auto") ||
+      (dir && dir !== "auto") ||
+      (priority != null && priority !== 0)
+    ) {
+      label = {
+        ...(text ? { text } : {}),
+        ...(show ? { show } : {}),
+        ...(dir ? { dir } : {}),
+        ...(priority != null ? { priority } : {}),
+      };
+    }
+  }
+
   const feature: MapFeature = {
     id,
     kind,
     title,
     views,
     ...(notes ? { notes } : {}),
+    ...(label ? { label } : {}),
     ...(category ? { category } : {}),
     ...(color ? { color } : {}),
     ...(imageUrl ? { imageUrl } : {}),
