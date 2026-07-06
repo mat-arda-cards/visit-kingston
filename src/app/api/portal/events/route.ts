@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "You don't manage that listing" }, { status: 403 });
   }
 
-  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const title = (typeof body.title === "string" ? body.title.trim() : "").slice(0, 200);
   const start = typeof body.start === "string" ? body.start.trim() : "";
   const category = body.category as EventCategory;
   if (!title) return NextResponse.json({ error: "title required" }, { status: 400 });
@@ -101,14 +101,24 @@ export async function POST(request: NextRequest) {
     typeof body.end === "string" && DATETIME_RE.test(body.end.trim())
       ? body.end.trim()
       : undefined;
-  const organizer =
-    typeof body.organizer === "string" && body.organizer.trim()
-      ? body.organizer.trim()
-      : user.name;
-  const venue =
-    typeof body.venue === "string" && body.venue.trim() ? body.venue.trim() : organizer;
-  const description = typeof body.description === "string" ? body.description.trim() : "";
-  const url = typeof body.url === "string" && body.url.trim() ? body.url.trim() : undefined;
+  const organizer = (
+    typeof body.organizer === "string" && body.organizer.trim() ? body.organizer.trim() : user.name
+  ).slice(0, 200);
+  const venue = (
+    typeof body.venue === "string" && body.venue.trim() ? body.venue.trim() : organizer
+  ).slice(0, 200);
+  const description = (typeof body.description === "string" ? body.description.trim() : "").slice(
+    0,
+    2000,
+  );
+  // Dropped, not 400'd, when absent or unsafe (matching the field-drop
+  // convention used elsewhere in this route) — a bare scheme check here is
+  // belt-and-suspenders for public/embed/kingston-events.js, which guards its
+  // own a.href assignment independently.
+  const url =
+    typeof body.url === "string" && /^https?:\/\//i.test(body.url.trim()) && body.url.trim().length <= 500
+      ? body.url.trim()
+      : undefined;
 
   let event: EventItem;
   if (typeof body.id === "string" && body.id) {

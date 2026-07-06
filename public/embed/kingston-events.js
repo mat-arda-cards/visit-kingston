@@ -96,7 +96,7 @@
       var item = el("div", "padding:10px 0;border-top:1px solid #e4e7eb;");
       item.appendChild(el("p", "margin:0;font-size:12px;color:#52606d;", whenLabel(ev)));
       var title = el("p", "margin:2px 0 0;font-size:15px;font-weight:600;color:#16405e;");
-      if (ev.url) {
+      if (ev.url && /^https?:/i.test(String(ev.url))) {
         var a = el("a", "color:#0b5b6f;text-decoration:underline;", ev.title);
         a.href = ev.url;
         a.target = "_blank";
