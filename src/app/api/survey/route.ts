@@ -1,10 +1,22 @@
 import { NextRequest } from "next/server";
+import { checkRateLimit, clientKey } from "@/lib/rate-limit";
 import { surveyStore } from "@/lib/survey-store";
 import type { SurveyResponse } from "@/lib/types";
 
 const DISTANCE_BANDS = ["local", "10-50mi", "50mi-plus", "out-of-state", "international"];
 
 export async function POST(request: NextRequest) {
+  const limit = await checkRateLimit(clientKey(request, "survey"), {
+    limit: 5,
+    windowMs: 10 * 60_000,
+  });
+  if (!limit.ok) {
+    return Response.json(
+      { error: "too many submissions, please try again later" },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   let body: Partial<SurveyResponse>;
   try {
     body = await request.json();
