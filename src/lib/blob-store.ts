@@ -36,3 +36,23 @@ export async function putImage(
   });
   return url;
 }
+
+/**
+ * True only for a URL this app itself could have produced via putImage():
+ * https, and a hostname that is exactly (or a subdomain of) our Vercel Blob
+ * store. Anything else — including other https URLs — must NOT be redirected
+ * to, or the image routes are an open redirect on our own domain. Distinct
+ * from the storage-form detectors named isBlobUrl() in map-store.ts /
+ * hunt-store.ts, which only distinguish "URL" from "filesystem path" at other
+ * call sites and must not be repurposed as a trust check.
+ */
+export function isTrustedBlobUrl(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return url.protocol === "https:" && url.hostname.endsWith(".public.blob.vercel-storage.com");
+}

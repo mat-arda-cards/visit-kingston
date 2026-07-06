@@ -12,20 +12,23 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { isTrustedBlobUrl } from "@/lib/blob-store";
 import { isBlobUrl, readPhoto } from "@/lib/hunt-store";
 
 export async function GET(request: NextRequest) {
   const relPath = request.nextUrl.searchParams.get("p");
   if (!relPath) return new Response("Missing ?p", { status: 400 });
 
-  // Player submissions are admin-only; reference photos are public.
+  // Player submissions are admin-only; reference photos are public. isBlobUrl()
+  // here is only a storage-form detector (URL vs fs path) — untouched.
   if (!isBlobUrl(relPath) && relPath.startsWith("photos/")) {
     const denied = await requireAdmin();
     if (denied) return denied;
   }
 
   // Prod: the stored value is a full Vercel Blob URL — redirect to the CDN.
-  if (isBlobUrl(relPath)) return NextResponse.redirect(relPath, 302);
+  // Only OUR blob host is trusted for the redirect itself.
+  if (isTrustedBlobUrl(relPath)) return NextResponse.redirect(relPath, 302);
 
   // Legacy / local dev: stream from the filesystem (path strictly sanitized).
   const photo = await readPhoto(relPath);
