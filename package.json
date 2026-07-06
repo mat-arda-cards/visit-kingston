@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "TZ=UTC vitest run",
+    "test:watch": "TZ=UTC vitest",
     "db:setup": "psql \"$DATABASE_URL\" -f db/schema.sql",
     "db:migrate": "node --env-file=.env.local scripts/migrate-to-db.mjs"
   },
@@ -30,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
