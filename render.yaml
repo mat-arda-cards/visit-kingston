@@ -9,6 +9,7 @@ services:
   - type: web
     name: explore-kingston
     runtime: docker # build from Dockerfile rather than a native buildpack
+    branch: main # explicit — Blueprint sync must never silently retarget this
     dockerfilePath: ./Dockerfile
     plan: starter # persistent disks require a paid instance type (not free)
     region: oregon # closest Render region to Kingston, WA; change if desired
@@ -51,3 +52,70 @@ services:
       # admin never consult this var (hasAnyUsers() is checked first).
       - key: SETUP_TOKEN
         generateValue: true
+
+      # Server-side Sentry error monitoring (src/instrumentation.ts). No-op
+      # when unset. Never NEXT_PUBLIC_ — server-only, PII off.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+
+      # Read-only, single-purpose token for the scheduled off-site backup
+      # workflow (.github/workflows/backup-offsite.yml) to call
+      # GET /api/admin/backup without an admin session.
+      - key: BACKUP_TOKEN
+        sync: false
+
+      # Shared secret the ferry-observe/ferry-accuracy GitHub Actions crons
+      # send as a Bearer token. Optional — those routes are open (throttled)
+      # when unset.
+      - key: FERRY_OBSERVE_TOKEN
+        sync: false
+
+  # Staging target for risky changes (E03). Builds the SAME Dockerfile/image
+  # as production; deploy to it with `git push origin <branch>:staging`. It
+  # starts from an EMPTY disk (its own `data-staging` volume) — no production
+  # PII ever lands here by default (do not restore a production backup onto
+  # it). NOINDEX=1 keeps it out of search engines (src/app/robots.ts).
+  - type: web
+    name: explore-kingston-staging
+    runtime: docker
+    branch: staging
+    dockerfilePath: ./Dockerfile
+    plan: starter # persistent disks require a paid instance type (not free)
+    region: oregon
+    healthCheckPath: /api/health
+
+    disk:
+      name: data-staging
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: WSDOT_API_KEY
+        sync: false
+      # Own origin for share-card/canonical URLs — set to this service's
+      # onrender.com URL in the dashboard once it's provisioned.
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false
+      - key: DATA_DIR
+        value: /data
+      # Fresh disk on first deploy has zero users — this bootstraps the
+      # staging admin account (same mechanism as production).
+      - key: SETUP_TOKEN
+        generateValue: true
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: staging
+      - key: BACKUP_TOKEN
+        sync: false
+      - key: FERRY_OBSERVE_TOKEN
+        sync: false
+      # Makes /robots.txt disallow everything (src/app/robots.ts). Plain
+      # runtime value, not NEXT_PUBLIC_ — both services ship the same image
+      # and branch on this at request time.
+      - key: NOINDEX
+        value: "1"

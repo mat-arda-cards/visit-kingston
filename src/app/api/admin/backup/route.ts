@@ -7,9 +7,15 @@
 // Text files (.json/.jsonl/.txt/.md) are inlined as UTF-8; everything else
 // (photos) is base64. Restore with scripts/restore-backup.mjs.
 //
-// Auth: admin session only. The bundle contains password hashes — treat the
-// downloaded file as sensitive.
+// Auth: an admin session, OR — when the BACKUP_TOKEN env var is set — a
+// matching `Authorization: Bearer <token>` header. BACKUP_TOKEN is a
+// read-only, single-purpose credential for the scheduled off-site backup
+// workflow (.github/workflows/backup-offsite.yml); it grants nothing else
+// anywhere. When BACKUP_TOKEN is unset, behavior is admin-session-only, same
+// as before. The bundle contains password hashes — treat the downloaded file
+// as sensitive.
 
+import { timingSafeEqual } from "crypto";
 import { readdir, readFile } from "fs/promises";
 import path from "path";
 import { getSessionUser } from "@/lib/auth";
@@ -50,10 +56,22 @@ async function walk(dir: string, base: string): Promise<BundledFile[]> {
   return out;
 }
 
-export async function GET() {
-  const user = await getSessionUser();
-  if (user?.role !== "admin") {
-    return Response.json({ error: "admin only" }, { status: 403 });
+function hasValidBackupToken(request: Request): boolean {
+  const configured = process.env.BACKUP_TOKEN;
+  if (!configured) return false;
+  const provided = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(configured);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export async function GET(request: Request) {
+  if (!hasValidBackupToken(request)) {
+    const user = await getSessionUser();
+    if (user?.role !== "admin") {
+      return Response.json({ error: "admin only" }, { status: 403 });
+    }
   }
 
   const root = dataDir();
