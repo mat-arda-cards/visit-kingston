@@ -63,11 +63,14 @@ async function get(url) {
 // Strip a UTF-8 BOM so "starts with" checks test the real first characters.
 const bodyPrefix = (body) => body.replace(/^﻿/, "");
 
+// Levels: REQUIRED entries gate the exit code; PROBE entries are per-item
+// results feeding a REQUIRED aggregate (spec: >= 1 per-event feed must pass,
+// so one dead event must not fail the gate); INFO entries are record-only.
 const results = [];
 function record(level, name, ok, detail) {
   results.push({ level, name, ok, detail });
   const tag =
-    level === "REQUIRED" ? (ok ? "PASS" : "FAIL") : ok ? "INFO " : "INFO ";
+    level === "INFO" ? "INFO " : ok ? "PASS " : "fail ";
   console.log(`[${tag}] ${level.padEnd(8)} ${name} — ${detail}`);
 }
 
@@ -83,9 +86,11 @@ let dnsCname = "";
   } catch (err) {
     dnsError = String(err?.message ?? err);
   }
-  // resolveCname returns names without the trailing dot dig shows.
+  // resolveCname returns names without the trailing dot dig shows. Record the
+  // name that actually satisfied the check, not just whichever came first.
   const normalized = names.map((n) => n.replace(/\.$/, ""));
-  dnsCname = normalized[0] ?? "";
+  dnsCname =
+    normalized.find((n) => n.endsWith(".memberzone.org")) ?? normalized[0] ?? "";
   const isMemberZone = normalized.some((n) => n.endsWith(".memberzone.org"));
   const isGrowthZoneAms = normalized.some((n) => n.endsWith(".growthzoneapp.com"));
   if (isGrowthZoneAms) {
@@ -172,7 +177,7 @@ const perEventIcs = [];
       ...(res.error ? { error: res.error } : {}),
     });
     record(
-      "REQUIRED",
+      "PROBE",
       `per-event iCal ${slug}`,
       pass,
       res.error

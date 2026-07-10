@@ -10,7 +10,7 @@ GrowthZone (the vendor) sells two distinct platforms with two different APIs: Gr
 
 ## Verified facts
 
-All rows below are transcribed from the harness snapshot generated **2026-07-10T21:40:09Z** (`docs/adr/ams-ground-truth-checks.json`); each fact was first verified 2026-07-05 and re-verified on the probe date shown. Every feed probe uses the truth triple — HTTP status + `Content-Type` + body prefix — because of the soft-404 row below.
+Rows 1–7 are transcribed from the harness snapshot generated **2026-07-10T21:52:07Z** (`docs/adr/ams-ground-truth-checks.json`); each fact was first verified 2026-07-05 and re-verified on the probe date shown. Every feed probe uses the truth triple — HTTP status + `Content-Type` + body prefix — because of the soft-404 row below.
 
 | # | Fact | Evidence | Probed |
 |---|---|---|---|
@@ -21,9 +21,16 @@ All rows below are transcribed from the harness snapshot generated **2026-07-10T
 | 5 | **No calendar-wide feed exists** | `/events/rss`, `/events/icalfeed`, `/events/calendar.ics`, `/rss` all 404; `/events/ical` is the soft-404 above; nothing served `text/calendar` or XML | 2026-07-10 |
 | 6 | Module state: jobs on, hot deals off | `GET /jobs` → 200; `GET /hotdeals` → 404 | 2026-07-10 |
 | 7 | CM/MZ API endpoint reference is public, no login | `GET https://api.micronetonline.com/v1/documentation` → 200 (https worked; no http fallback needed) | 2026-07-10 |
-| 8 | Members objects expose enough for listings + entitlements (`Status`, `Level`, `WebParticipationLevel`, `DoNotDisplayOnWeb`, `DropDate`, `Slug`, `Latitude/Longitude`, `LogoUrl`); write endpoints exist but key scope is unknown (Question 3) | Public v1 documentation, read 2026-07-05 | 2026-07-05 |
-| 9 | API access is enablement-gated with unpublished pricing; keys are per-developer and granted only with the account holder's (the Chamber's) express permission | GrowthZone support docs, read 2026-07-05 — hence the Chamber sends the email, not Mat | 2026-07-05 |
-| 10 | Rate limits for `api.micronetonline.com` are not documented anywhere public; `events/feeds` and `RecentActivity` appear in the v1 docs with no description | Public v1 documentation, read 2026-07-05 (Questions 4–5) | 2026-07-05 |
+
+### Survey-recorded facts (not harness-checkable)
+
+The rows below come from a human read of the public vendor documentation on 2026-07-05, not from the harness — they cannot be machine-verified, so re-check them by re-reading the cited source. The unknowns they carry are exactly Questions 3–5 below.
+
+| # | Fact | Source | Read |
+|---|---|---|---|
+| 8 | Members objects expose enough for listings + entitlements (`Status`, `Level`, `WebParticipationLevel`, `DoNotDisplayOnWeb`, `DropDate`, `Slug`, `Latitude/Longitude`, `LogoUrl`); write endpoints exist but key scope is unknown (Question 3) | Public v1 documentation at `api.micronetonline.com/v1/documentation` | 2026-07-05 |
+| 9 | API access is enablement-gated with unpublished pricing; keys are per-developer and granted only with the account holder's (the Chamber's) express permission | GrowthZone support docs — hence the Chamber sends the email, not Mat | 2026-07-05 |
+| 10 | Rate limits for `api.micronetonline.com` are not documented anywhere public; `events/feeds` and `RecentActivity` appear in the v1 docs with no description | Public v1 documentation (Questions 4–5) | 2026-07-05 |
 
 ## Questions awaiting written answers (the gate)
 
