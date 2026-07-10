@@ -446,7 +446,7 @@ both inputs fresh (commands in the script header), then
 | Source | URL | Access | Cost | Status in app |
 |---|---|---|---|---|
 | **explorekingstonwa.com — The Events Calendar REST** (discovery) | https://explorekingstonwa.com/wp-json/tribe/events/v1/events | Public Tribe REST, no key — the Chamber's own site, machine-readable | Free | **strongest ingest candidate** (would replace `src/lib/data/events.ts` seed) |
-| Chamber GrowthZone calendar | https://business.kingstonchamber.com/events | Public HTML; per-event iCal `/events/ICal/[slug]-[id].ics`; calendar-wide iCal existence on the Chamber's plan **unverified** | Free (iCal); REST may need a paid GrowthZone quote | seeded; iCal ingest planned |
+| Chamber GrowthZone calendar | https://business.kingstonchamber.com/events | Public HTML; per-event iCal `/events/ICal/[slug]-[id].ics`; calendar-wide feed **absent as of 2026-07 (see docs/adr/ADR-0001-ams-ground-truth.md; per-event iCal verified live)** | Free (iCal); REST may need a paid GrowthZone quote | seeded; iCal ingest planned |
 | Kingston Chamber WordPress (kingstonchamber.com) | /wp-json/tribe/events/v1/events | Tribe REST live but returns **0 events** — empty shell | Free | do not integrate |
 | Port of Kingston | https://portofkingston.org/wp-json/tribe/events/v1/events | Public Tribe REST, no key — ~38 events, structured | Free | planned supplement |
 | Visit Kitsap (county DMO) | https://visitkitsap.com/ | dates only as prose in HTML (acf empty) — push target, not pull source | Free | push target |
