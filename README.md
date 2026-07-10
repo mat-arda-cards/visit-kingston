@@ -64,19 +64,14 @@ UI code — one file per domain in [src/lib/data/](src/lib/data/):
 | `webcams.ts` | Webcam grid |
 | `ferry-fallback.ts` | Car-ferry schedule shown when no API key is set |
 
-## Deploy (free)
+## Deploy
 
-Vercel Hobby tier fits this project:
-
-```bash
-npx vercel
-```
-
-Set `WSDOT_API_KEY` in the Vercel project settings. One caveat: the
-LTAC visitor-survey store writes to a local file, which doesn't persist on
-serverless — wire `src/lib/survey-store.ts` to a database (Vercel Postgres /
-Supabase, both have free tiers) before relying on survey numbers. The
-interface is already in place.
+The app is **live on Render** at <https://explore-kingston.onrender.com> —
+see [docs/DEPLOY.md](docs/DEPLOY.md) for the full guide (Blueprint setup,
+staging, the Vercel alternative, backups, domain/DNS). Note the Vercel Hobby
+tier is **not** an option here: it's non-commercial only, and this is a
+Chamber app promoting member businesses — [docs/DEPLOY.md](docs/DEPLOY.md)
+covers what a Vercel move actually costs and requires.
 
 ## Docs
 

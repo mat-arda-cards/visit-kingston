@@ -185,9 +185,9 @@ that would break Chamber email) is **deferred until launch**. See
 
 ---
 
-## 4. State & backups — two independent layers
+## 4. State & backups — three independent layers
 
-`DATA_DIR` (`/data` on Render) is the entire backup surface. There are **two
+`DATA_DIR` (`/data` on Render) is the entire backup surface. There are **three
 backup layers**, deliberately independent:
 
 ### Layer 1 — Render daily disk snapshots (on-host, automatic)
@@ -218,6 +218,50 @@ It validates the bundle header (`app === "explore-kingston"`), guards against
 path traversal, and rewrites every file into the target dir. Use it to restore
 onto a fresh host, a local machine, or as the source for a DB import. (For
 in-place recovery on the live service, prefer the Render disk snapshot.)
+
+### Layer 3 — scheduled off-site encrypted backup (automatic, E03)
+
+`.github/workflows/backup-offsite.yml` runs **daily** (09:23 UTC) on GitHub
+Actions: it calls `GET /api/admin/backup` with a scoped, read-only
+`BACKUP_TOKEN` bearer token (no admin session needed), encrypts the response
+with [`age`](https://github.com/FiloSottile/age) **on the runner, before
+anything is written to disk**, and lands the encrypted `.age` file in the
+Cloudflare R2 bucket `explore-kingston-backups` (or, until R2 is configured, a
+14-day GitHub Actions artifact — the repo is public, so the artifact's
+"downloadable by any logged-in GitHub user" exposure is fine precisely because
+the payload is encrypted). The plaintext bundle never touches the runner's
+disk or leaves the process piping `curl` into `age`.
+
+**A red ✗ on this workflow means the backup did not happen that day** — that
+*is* the alert; there's no separate paging channel for it. Check
+`gh run list --workflow backup-offsite.yml` (or the Actions tab) if you
+haven't seen a green run recently.
+
+**Restore an off-site `.age` file:**
+
+```bash
+# 1. Decrypt with the private key from 1Password ("ExploreKingston backup age key"):
+age -d -i /path/to/age-key.txt explore-kingston-backup-2026-07-06.json.age > bundle.json
+
+# 2. Restore exactly like a Layer-2 bundle:
+node scripts/restore-backup.mjs bundle.json ./.data
+```
+
+**Prove the chain works** (encrypt → decrypt → restore, byte-for-byte) any
+time with `sh scripts/backup-roundtrip-test.sh` — it generates a throwaway
+keypair and a synthetic bundle, so it never touches the real recipient key or
+real data. Requires `age`/`age-keygen` on `PATH` (`brew install age` /
+`apt-get install -y age`).
+
+**Manual pull + encrypt** (e.g. before a risky change, independent of the
+schedule):
+
+```bash
+BASE_URL=https://explore-kingston.onrender.com \
+BACKUP_TOKEN=<from Render dashboard or 1Password> \
+BACKUP_AGE_RECIPIENT=<age1... public key> \
+sh scripts/fetch-encrypt-backup.sh
+```
 
 ### `scripts/backup-data.sh` — tar snapshots (cron)
 
@@ -290,6 +334,7 @@ Dated, concrete, grounded in the seed files. Put these on a real calendar.
 | **~2026-09-14** | Friends & Neighbors Brewing resumes Monday 4–8 pm hours (closed Mondays until MNF returns). Update the hours string (or have them edit via the portal). | `src/lib/data/restaurants.ts` |
 | **October 2026** | WSF typically changes fares each October. The ferry page hardcodes **summer 2026** fares ($11.35 walk-on round trip, $27.00 car + driver) — update the numbers, or wire the Fares API. Kitsap Transit fares also historically take effect Oct 1. | `src/app/ferry/page.tsx` (per DATA_SOURCES §1) |
 | **Oct 1–30, 2026** (annually; watch kitsap.gov/das each summer — the window has moved) | Kitsap County **LTAC** grant RFP for 2027 funds. One-month window; late = rejected. Export the survey/analytics summaries from `/admin` for the application. | DATA_SOURCES §12 |
+| **Annually** (pick a fixed month once E03's migration date is known) | Rotate the **age backup keypair** (`BACKUP_AGE_RECIPIENT`) — see §12 Secret rotation. Keep every retired private key; old backups need them. | 1Password "ExploreKingston backup age key" |
 
 ### Quarterly re-verification
 
@@ -307,6 +352,7 @@ is authoritative):
 - **Airbnb/Vrbo lodging deep links** — listings die when owners delist; check
   in a browser.
 - **Pull an off-site admin backup bundle** (§4) so the off-Render copy stays fresh.
+- **Rotate `BACKUP_TOKEN` and `FERRY_OBSERVE_TOKEN`** — see §12 Secret rotation.
 
 ---
 
@@ -519,4 +565,42 @@ to a minute to appear — that's normal. Feed endpoints add CDN caching; upstrea
 adapters cache separately (WSF schedule ~15 min, terminal space ~60 s, alerts
 ~5 min, weather ~30 min, tides ~6 h). If a page is stuck beyond that: locally
 restart `npm run dev`; in prod redeploy or wait the window out before digging.
-```
+
+---
+
+## 11. Monitoring & alerts (E03)
+
+Two free-tier services watch the live app; both alert Mat's personal email.
+
+| Service | What it watches | Alert path |
+|---|---|---|
+| **Sentry** | Server-side exceptions only (`src/instrumentation.ts`). `sendDefaultPii: false`, `tracesSampleRate: 0` — no visitor IPs, cookies, request bodies, or performance traces are sent. Client-side Sentry is explicitly **not** wired. | Sentry project notification → email |
+| **UptimeRobot** | Two HTTP(S) monitors, 5-min interval: `GET /api/health` and `GET /api/ferry/status` on the production host. | UptimeRobot alert contact → email |
+
+**Sentry setup:** one project (platform: Next.js/Node), DSN stored as
+`SENTRY_DSN` (a `sync: false` var in `render.yaml` — never `NEXT_PUBLIC_`,
+never in git). `SENTRY_ENVIRONMENT` distinguishes `production` from `staging`
+so events don't mix. Confirm it's wired by checking the Sentry project's
+"waiting for events" indicator turns green after a deploy, or by forcing a
+deliberate error on **staging only** (never production).
+
+**UptimeRobot setup:** two monitors pointed at the URLs above; a read-only
+API key (stored in 1Password) lets `scripts/verify-migration.sh` confirm both
+monitors report status "up" without logging into the dashboard.
+
+Both are genuinely free tier (UptimeRobot free plan, Sentry Developer/free
+plan) — no new spend.
+
+## 12. Secret rotation (E03)
+
+| Secret | Cadence | Procedure |
+|---|---|---|
+| `BACKUP_TOKEN` | Quarterly (align with the §6 quarterly checklist) | `openssl rand -hex 32` → update the Render dashboard env var on **both** services → update the GitHub Actions repo secret (`gh secret set BACKUP_TOKEN`, value piped via stdin, never a CLI arg) → no redeploy required (runtime var) |
+| `FERRY_OBSERVE_TOKEN` | Quarterly | Same procedure as `BACKUP_TOKEN` above — one value shared by both ferry cron workflows |
+| age keypair (`BACKUP_AGE_RECIPIENT`) | Annually, or immediately on any suspicion of exposure | `age-keygen` → new **public** key becomes the repo variable `BACKUP_AGE_RECIPIENT` (`gh variable set`) → new **private** key goes to 1Password ("ExploreKingston backup age key") → **keep every old private key** — backups encrypted under a retired key can only be decrypted with it, and rotation is forward-only (old backups are never re-encrypted) |
+| `AUTH_SECRET` | Never casually — rotating logs **every** signed-in user out (see §10 "Portal login loops"). Only rotate on a real compromise. | Render dashboard env var → redeploy. There is no per-session revocation, so this is the only "log everyone out" lever. |
+
+Never echo a secret value in a terminal, script, or CI log — this repo is
+public, so a logged secret is an exposed secret. `gh secret set NAME` reads
+the value from stdin or a file, never a shell argument that could land in
+shell history or process listings.

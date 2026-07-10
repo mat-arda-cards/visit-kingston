@@ -173,6 +173,41 @@ The other runtime-only vars (`AUTH_SECRET`, `WSDOT_API_KEY`, `SETUP_TOKEN`,
 `DATA_DIR`) don't have this constraint — they're read on the server at request
 time.
 
+### 2d. Staging (E03)
+
+A second Render web service, `explore-kingston-staging`, is declared in the
+same `render.yaml` Blueprint alongside production. It builds the identical
+`Dockerfile` — same image, same code — so there is nothing to keep in sync
+manually beyond the env vars below.
+
+**Deploy to staging:**
+
+```bash
+git push origin <local-branch>:staging
+```
+
+Render auto-deploys `explore-kingston-staging` from the `staging` branch,
+exactly like production auto-deploys `main`. This is the target for risky
+changes: push there first, smoke-test, then merge/push to `main`.
+
+**What's different from production:**
+
+- **Own disk** (`data-staging`, 1 GB, mounted at `/data`) — staging starts
+  from an **empty** disk. It bootstraps its own admin account via its own
+  `SETUP_TOKEN` (`generateValue: true`, same mechanism as production's
+  first-run bootstrap in [§4](#4-first-run-in-production)).
+- **`NOINDEX=1`** — makes `/robots.txt` disallow everything
+  (`src/app/robots.ts`), so search engines never index the staging copy.
+- **`SENTRY_ENVIRONMENT=staging`** — staging's Sentry events are tagged
+  separately from production's, same DSN/project.
+- **Do NOT restore a production backup onto staging.** Staging's disk is
+  meant to hold synthetic/seed data only — a production backup bundle
+  contains real password hashes and real visitor/LTAC survey PII.
+
+**Cost:** ~$7.25/mo (Starter web instance) + ~$0.25/mo (1 GB disk) — approved
+in the v2 budget; a human still clicks "Approve" on the Blueprint sync that
+creates it (Render dashboard), per the new-spend sign-off rule.
+
 ---
 
 ## 3. Phase 2 — Vercel serverless (built, not yet used)

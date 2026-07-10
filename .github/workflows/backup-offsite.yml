@@ -1,0 +1,93 @@
+name: Off-site encrypted backup
+
+# Pulls the admin backup bundle (GET /api/admin/backup) using a scoped,
+# read-only BACKUP_TOKEN, encrypts it with `age` on this runner BEFORE it is
+# stored anywhere (scripts/fetch-encrypt-backup.sh pipes the HTTP response
+# straight into age — plaintext never touches this runner's disk), then lands
+# the encrypted `.age` file in the Cloudflare R2 bucket if configured, or —
+# as an interim fallback — a 14-day GitHub Actions artifact.
+#
+# A red X on this workflow means the backup did NOT happen today. That IS the
+# alert; there is no separate notification channel for it.
+#
+# ── Setup ─────────────────────────────────────────────────────────────────
+#  1. Set BACKUP_TOKEN as a runtime env var on the Render production service
+#     (render.yaml / docs/OPERATIONS.md), then add a repo *secret* of the
+#     same name + value (Settings → Secrets and variables → Actions →
+#     Secrets). Missing this fails the run loudly BY DESIGN — see
+#     scripts/fetch-encrypt-backup.sh.
+#  2. Generate an age keypair (`age-keygen`); add the PUBLIC key as a repo
+#     *variable* BACKUP_AGE_RECIPIENT. The PRIVATE key lives ONLY in
+#     1Password — never in this repo, a secret, or a log.
+#  3. (Recommended) Create a Cloudflare R2 bucket + a scoped (this-bucket-
+#     only) API token, then add repo secrets R2_ACCESS_KEY_ID /
+#     R2_SECRET_ACCESS_KEY and repo variables R2_ENDPOINT / R2_BUCKET. Until
+#     these exist, encrypted backups land as a workflow artifact instead —
+#     downloadable by any logged-in GitHub user on this public repo, but the
+#     age encryption (not the artifact ACL) is the real control.
+#  4. (Optional) Point at a different host with repo variable
+#     FERRY_OBSERVE_URL (shared with the ferry workflows). Defaults to the
+#     Render URL below.
+#
+# Note: GitHub disables scheduled workflows after 60 days with no repo
+# commits; any push re-enables them.
+
+on:
+  schedule:
+    - cron: "23 9 * * *" # daily, offset from ferry-accuracy's 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read # checkout only, to run scripts/fetch-encrypt-backup.sh
+
+concurrency:
+  group: backup-offsite
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: ${{ vars.FERRY_OBSERVE_URL || 'https://explore-kingston.onrender.com' }}
+      BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+      BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ENDPOINT: ${{ vars.R2_ENDPOINT }}
+      R2_BUCKET: ${{ vars.R2_BUCKET }}
+      OUT: backup.json.age
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install age
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+
+      - name: Fetch + encrypt backup
+        run: sh scripts/fetch-encrypt-backup.sh
+
+      - name: Compute dated object name
+        id: name
+        run: echo "dated=explore-kingston-backup-$(date -u +%F).json.age" >> "$GITHUB_OUTPUT"
+
+      # Primary path: Cloudflare R2 (S3-compatible; aws CLI is preinstalled
+      # on ubuntu-latest). Only runs once R2_ACCESS_KEY_ID is configured.
+      - name: Upload to Cloudflare R2
+        if: env.R2_ACCESS_KEY_ID != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ env.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: |
+          aws s3 cp "$OUT" "s3://${R2_BUCKET}/${{ steps.name.outputs.dated }}" \
+            --endpoint-url "$R2_ENDPOINT"
+
+      # Fallback path: no R2 configured yet. Uploads ONLY the encrypted
+      # .age file — never the plaintext bundle.
+      - name: Upload as workflow artifact (fallback — no R2 configured)
+        if: env.R2_ACCESS_KEY_ID == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.dated }}
+          path: ${{ env.OUT }}
+          retention-days: 14

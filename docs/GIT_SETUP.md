@@ -11,7 +11,8 @@
   Render↔GitHub sync issue during Phase-1 launch. No secrets are in git —
   every `.env*` is gitignored; the one committed sample is
   `.env.production.example`, which contains placeholders only.)
-- **Branch:** `main`.
+- **Branch:** `main` (production), `staging` (E03 staging target — see
+  [DEPLOY.md §2d](DEPLOY.md)).
 - **Repo-local identity** (already set — beats the global arda identity):
 
   ```
@@ -23,10 +24,15 @@
   keeps commits off the arda identity. Reset it if you want the full name:
   `git config user.name "Matt Hager"`.
 - **GitHub account:** `mat-arda-cards` (personal, despite the arda-ish name —
-  confirmed intentional).
+  confirmed intentional). A migration to a different account
+  (`matthager12-collab`) was drafted under E03 but is **on hold** — the
+  target account already had a same-named placeholder repo blocking a clean
+  transfer, and Mat decided to stay put rather than resolve that conflict.
+  This repo is not moving for now.
 - **Deploy:** Render **auto-deploys on push to `main`** from this GitHub repo
   (Blueprint / `render.yaml`, Docker build). A push is a production deploy —
-  see [DEPLOY.md](DEPLOY.md).
+  see [DEPLOY.md](DEPLOY.md). Push to `staging` deploys the staging service
+  instead ([DEPLOY.md §2d](DEPLOY.md)).
 
 ## Why the separation exists
 
@@ -67,6 +73,13 @@ cached file, swap the helper's `grep` for
 `op read "op://Private/Github MattHager/credential"` (slower, prompts on op
 session expiry).
 
+**The PAT needs both `repo` AND `workflow` scopes** (not just `repo`) — the
+repo has GitHub Actions workflow files (`ci.yml`, the two ferry crons,
+`backup-offsite.yml`), and pushing a new/changed workflow file is rejected by
+a `repo`-only token with a clear "refusing to allow a Personal Access Token
+to create or update workflow" error. The current token already has both
+scopes (confirmed: the E03 PR pushed `backup-offsite.yml` successfully).
+
 **Never print the token.** If it rotates, refresh `.env.git` from 1Password:
 
 ```bash
@@ -75,8 +88,8 @@ op read "op://Private/Github MattHager/credential" | \
 chmod 600 "/Users/matatarda/chamber app/visit-kingston/.env.git"
 ```
 
-(Or just edit `.env.git` by hand.) The PAT needs `repo` scope for push, or
-`repo` + `workflow` if you later add Actions.
+(Or just edit `.env.git` by hand.) The PAT needs **`repo` + `workflow`**
+scopes — see the note above.
 
 ## Everyday workflow
 
