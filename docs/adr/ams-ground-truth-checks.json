@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-07-10T21:52:07.539Z",
+  "dnsCname": "public.west.us.memberzone.org",
+  "eventsIndex": {
+    "url": "https://business.kingstonchamber.com/events",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "detailsSlugsFound": [
+      "grand-hallway-art-show-1770249",
+      "whozyamama-cajun-zydeco-summer-outdoor-concert-series-1736715",
+      "steel-rain-steel-drum-summer-outdoor-concert-series-1736723"
+    ],
+    "pass": true
+  },
+  "perEventIcs": [
+    {
+      "url": "https://business.kingstonchamber.com/events/ICal/grand-hallway-art-show-1770249.ics",
+      "status": 200,
+      "contentType": "text/calendar; charset=utf-8",
+      "pass": true,
+      "prodId": "-//ChamberMaster//Event Calendar 2.0//EN",
+      "hasLosAngelesTzid": true,
+      "publishedTtl": "P1H"
+    },
+    {
+      "url": "https://business.kingstonchamber.com/events/ICal/whozyamama-cajun-zydeco-summer-outdoor-concert-series-1736715.ics",
+      "status": 200,
+      "contentType": "text/calendar; charset=utf-8",
+      "pass": true,
+      "prodId": "-//ChamberMaster//Event Calendar 2.0//EN",
+      "hasLosAngelesTzid": true,
+      "publishedTtl": "P1H"
+    },
+    {
+      "url": "https://business.kingstonchamber.com/events/ICal/steel-rain-steel-drum-summer-outdoor-concert-series-1736723.ics",
+      "status": 200,
+      "contentType": "text/calendar; charset=utf-8",
+      "pass": true,
+      "prodId": "-//ChamberMaster//Event Calendar 2.0//EN",
+      "hasLosAngelesTzid": true,
+      "publishedTtl": "P1H"
+    }
+  ],
+  "calendarWideCandidates": [
+    {
+      "url": "https://business.kingstonchamber.com/events/ical",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "found": false,
+      "softNotFound": true
+    },
+    {
+      "url": "https://business.kingstonchamber.com/events/rss",
+      "status": 404,
+      "contentType": "text/html; charset=utf-8",
+      "found": false,
+      "softNotFound": false
+    },
+    {
+      "url": "https://business.kingstonchamber.com/events/icalfeed",
+      "status": 404,
+      "contentType": "text/html; charset=utf-8",
+      "found": false,
+      "softNotFound": false
+    },
+    {
+      "url": "https://business.kingstonchamber.com/events/calendar.ics",
+      "status": 404,
+      "contentType": "text/html; charset=utf-8",
+      "found": false,
+      "softNotFound": false
+    },
+    {
+      "url": "https://business.kingstonchamber.com/rss",
+      "status": 404,
+      "contentType": "text/html",
+      "found": false,
+      "softNotFound": false
+    }
+  ],
+  "modules": {
+    "/jobs": {
+      "status": 200,
+      "expected": 200,
+      "matchesExpected": true
+    },
+    "/hotdeals": {
+      "status": 404,
+      "expected": 404,
+      "matchesExpected": true
+    }
+  },
+  "apiDocs": {
+    "url": "https://api.micronetonline.com/v1/documentation",
+    "schemeThatWorked": "https",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8"
+  },
+  "requiredChecksPass": true
+}
