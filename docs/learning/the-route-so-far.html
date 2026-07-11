@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<!--
+  "The Route So Far" — a plain-English walkthrough of epics E01 (security
+  hardening), E02 (test floor + CI gates), and E03 (ops floor + repo
+  migration) for Explore Kingston. Written for a technical-but-non-developer
+  reader; self-contained, no build step, no external requests — open directly
+  in a browser. Generated 2026-07-10; update if the epics it describes change.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Route So Far — E01, E02 &amp; E03 Explained</title>
+<style>
+  :root {
+    --bg: #EEF0EA;
+    --surface: #F8F9F5;
+    --surface-2: #E3E6DC;
+    --text: #17211F;
+    --text-dim: #4B5854;
+    --deep: #1E4B47;
+    --accent: #C2542A;
+    --rope: #8A7350;
+    --line: #CDD1C4;
+    --shadow: 0 1px 2px rgba(23,33,31,0.06), 0 8px 24px rgba(23,33,31,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0E1A18;
+      --surface: #142825;
+      --surface-2: #1B332F;
+      --text: #E9ECE6;
+      --text-dim: #A9B3AC;
+      --deep: #86C9BE;
+      --accent: #E5854F;
+      --rope: #C7AC7B;
+      --line: #274641;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 28px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #EEF0EA; --surface: #F8F9F5; --surface-2: #E3E6DC; --text: #17211F;
+    --text-dim: #4B5854; --deep: #1E4B47; --accent: #C2542A; --rope: #8A7350;
+    --line: #CDD1C4; --shadow: 0 1px 2px rgba(23,33,31,0.06), 0 8px 24px rgba(23,33,31,0.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E1A18; --surface: #142825; --surface-2: #1B332F; --text: #E9ECE6;
+    --text-dim: #A9B3AC; --deep: #86C9BE; --accent: #E5854F; --rope: #C7AC7B;
+    --line: #274641; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 28px rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 900px; margin: 0 auto; padding: 0 24px 96px; }
+
+  h1, h2, h3 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    text-wrap: balance;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 12px;
+    color: var(--rope);
+  }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: 72px 0 40px; border-bottom: 1px solid var(--line); }
+  .hero h1 {
+    font-size: clamp(2.1rem, 4.2vw, 3.1rem);
+    margin: 14px 0 18px;
+    letter-spacing: -0.01em;
+  }
+  .hero p.sub {
+    max-width: 62ch;
+    font-size: 1.15rem;
+    color: var(--text-dim);
+    margin: 0 0 28px;
+  }
+  .hero .howto {
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+    font-size: 0.92rem;
+    color: var(--text-dim);
+    border-top: 1px dashed var(--line);
+    padding-top: 18px;
+  }
+  .hero .howto strong { color: var(--deep); font-weight: 600; }
+
+  /* ---------- Route rail ---------- */
+  .route { position: relative; }
+  .route::before {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: repeating-linear-gradient(
+      to bottom, var(--rope) 0 6px, transparent 6px 12px
+    );
+    opacity: 0.55;
+  }
+
+  .berth { position: relative; padding: 56px 0 8px 40px; }
+  .berth::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 62px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px var(--bg);
+  }
+
+  .berth-label {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .berth-num {
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .berth h2 {
+    font-size: clamp(1.6rem, 3vw, 2.15rem);
+    margin: 4px 0 4px;
+  }
+  .berth .epic-name {
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin: 0 0 22px;
+  }
+
+  .summary {
+    max-width: 68ch;
+    font-size: 1.03rem;
+    color: var(--text);
+    margin-bottom: 22px;
+  }
+
+  /* ---------- Glossary strip ---------- */
+  .glossary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px 22px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 18px 20px;
+    margin: 0 0 28px;
+  }
+  .glossary-title {
+    grid-column: 1 / -1;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--rope);
+    margin-bottom: 4px;
+  }
+  .glossary dt {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--deep);
+    display: inline;
+  }
+  .glossary dd {
+    display: inline;
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+  }
+  .glossary dd::after { content: ""; }
+  .gloss-item { padding: 2px 0; }
+
+  /* ---------- Analogy block ---------- */
+  .analogy {
+    background: var(--surface-2);
+    border-left: 3px solid var(--deep);
+    padding: 22px 26px;
+    margin: 0 0 28px;
+  }
+  .analogy .tag {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--deep);
+    margin-bottom: 10px;
+    display: block;
+  }
+  .analogy p {
+    margin: 0;
+    font-size: 1.02rem;
+  }
+
+  /* ---------- Steps ---------- */
+  .steps { margin: 0 0 30px; padding: 0; list-style: none; counter-reset: step; }
+  .steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: 16px;
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+  }
+  .steps li:last-child { border-bottom: 1px solid var(--line); }
+  .steps li::before {
+    content: counter(step);
+    font-family: Georgia, serif;
+    font-size: 1.4rem;
+    color: var(--accent);
+    line-height: 1.3;
+  }
+  .steps .step-body b { color: var(--deep); }
+  .steps .step-body { font-size: 0.98rem; }
+  .steps .real-name {
+    display: block;
+    margin-top: 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  /* ---------- Quiz ---------- */
+  .quiz {
+    border: 1px solid var(--rope);
+    background: var(--surface);
+    padding: 20px 24px 22px;
+    margin-bottom: 12px;
+  }
+  .quiz summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--deep);
+    list-style: none;
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+  .quiz summary::-webkit-details-marker { display: none; }
+  .quiz summary .q-tag {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .quiz summary::after {
+    content: "reveal the answer \2193";
+    margin-left: auto;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .quiz[open] summary::after { content: "hide answer \2191"; }
+  .quiz summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+  .quiz .answer {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line);
+    font-size: 0.96rem;
+    color: var(--text-dim);
+  }
+  .quiz .answer b { color: var(--text); }
+
+  /* ---------- Closing ---------- */
+  .closing {
+    margin-top: 56px;
+    padding: 32px 0 0 40px;
+    border-top: 1px solid var(--line);
+  }
+  .closing h3 { font-size: 1.3rem; margin: 6px 0 14px; }
+  .closing p { max-width: 68ch; color: var(--text-dim); }
+  .closing .thread {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+    font-size: 0.9rem;
+  }
+  .closing .thread span { color: var(--text); }
+  .closing .thread .arrow { color: var(--accent); }
+
+  @media (max-width: 560px) {
+    .berth { padding-left: 28px; }
+    .route::before { left: 3px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="hero">
+    <div class="eyebrow">Operations log — Explore Kingston</div>
+    <h1>The Route So Far</h1>
+    <p class="sub">
+      Three connected upgrades — the team calls them "epics" — to the Kingston ferry app.
+      Explained the way you'd explain actually running a ferry terminal, because the
+      metaphor turns out to fit disturbingly well.
+    </p>
+    <div class="howto">
+      <div><strong>One analogy</strong> per epic — the everyday version</div>
+      <div><strong>Three steps</strong> — what actually happened, in order</div>
+      <div><strong>One pop quiz</strong> — to check it landed</div>
+    </div>
+  </header>
+
+  <div class="route">
+
+    <!-- ================= E01 ================= -->
+    <section class="berth" id="e01">
+      <div class="berth-label">
+        <span class="berth-num">Berth 1</span>
+      </div>
+      <h2>Dockside Safety Sweep</h2>
+      <p class="epic-name">E01 — Security hardening on the live app</p>
+
+      <p class="summary">
+        The app was already live and open to the public — anyone could visit it, no
+        account needed. A safety review found eight real problems: things a stranger
+        could use to fill up the server's storage, trick a visitor into a scam link,
+        sneak a malicious link onto a public page, crash the operator's dashboard with
+        one bad file, and show event times seven hours off, among others. Every fix
+        shipped separately, each with its own automatic proof that it worked, and the
+        site never went offline for a second.
+      </p>
+
+      <div class="glossary">
+        <span class="glossary-title">Terms, translated</span>
+        <div class="gloss-item"><dt>Anonymous</dt><dd> — no login required to use it</dd></div>
+        <div class="gloss-item"><dt>Endpoint</dt><dd> — one specific "counter" in the app where a request goes in</dd></div>
+        <div class="gloss-item"><dt>Rate limit</dt><dd> — a "no more than X per person per Y minutes" rule</dd></div>
+        <div class="gloss-item"><dt>Commit</dt><dd> — one saved, labeled, undo-able change</dd></div>
+        <div class="gloss-item"><dt>Open redirect</dt><dd> — a link that looks safe but secretly sends you elsewhere</dd></div>
+        <div class="gloss-item"><dt>Fail-closed</dt><dd> — when unsure, default to locked, not open</dd></div>
+      </div>
+
+      <div class="analogy">
+        <span class="tag">The everyday version</span>
+        <p>
+          Imagine the terminal never closes — foot and vehicle traffic never stops,
+          24/7. A routine dockside inspection turns up real problems while boats keep
+          running: a free-sample cooler with no limit on how many bags one person can
+          grab (someone could empty the whole thing before the next sailing); a
+          "follow the detour" sign anyone could quietly re-point toward a scam parking
+          lot; a suggestion-card slot that lets a stranger tape up a poisoned coupon;
+          a single torn ticket that jams the whole printer; a dock clock stuck seven
+          hours off so the sailing board shows the wrong time; and a "first person
+          through the door gets to be dockmaster" rule with no ID check on a brand-new
+          terminal. None of it requires shutting the terminal down to fix.
+        </p>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <div class="step-body">
+            <b>Walk the dock and write down every real hole</b> — not hypothetical
+            ones, ones actually found by inspection.
+            <span class="real-name">= the security audit that named all eight problems</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <b>Patch each hole separately</b>, one labeled logbook entry at a time,
+            each with a witnessed test proving it's fixed — and never touch anything
+            that already works.
+            <span class="real-name">= one commit per fix, each with its own test; the audit-flagged fragile files stayed untouched</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <b>Post sensible limits going forward</b> — five free samples per person
+            per ten minutes, not "unlimited" — so the same trick can't work twice.
+            <span class="real-name">= rate limits + storage quotas + a fail-closed setup check</span>
+          </div>
+        </li>
+      </ol>
+
+      <details class="quiz">
+        <summary><span class="q-tag">Pop quiz</span> The free-sample cooler had no limit — what did a real visitor actually get to spam, unlimited, before this epic?</summary>
+        <div class="answer">
+          <b>Anonymous uploads</b> — anyone could submit scavenger-hunt photos (or
+          survey answers, or analytics pings) with no cap at all. Enough scripted
+          submissions could fill the server's entire 1&nbsp;GB disk, which trips the
+          health check and takes the <i>whole site</i> offline — not just the hunt
+          page. The fix was a "5 uploads per 10 minutes per visitor" rate limit plus a
+          hard storage quota, so one bad actor can dent the shelf but never empty the store.
+        </div>
+      </details>
+    </section>
+
+    <!-- ================= E02 ================= -->
+    <section class="berth" id="e02">
+      <div class="berth-label">
+        <span class="berth-num">Berth 2</span>
+      </div>
+      <h2>The Boarding Checkpoint</h2>
+      <p class="epic-name">E02 — Test floor + CI gates</p>
+
+      <p class="summary">
+        Before this epic, any change to the app's code could sail straight onto the
+        live site the moment someone pushed it — there was no inspection at all. This
+        epic didn't fix a single bug. Instead, it built the checkpoint: automated
+        checks that write down exactly how the app behaves today, a robot that tries
+        every single staff-only door on the live app with no key to prove they're all
+        still locked, an accessibility pass confirming the main pages still work for
+        screen-reader visitors, and — the important part — a rule that no change can
+        reach the live site until it clears every one of the above.
+      </p>
+
+      <div class="glossary">
+        <span class="glossary-title">Terms, translated</span>
+        <div class="gloss-item"><dt>Test</dt><dd> — a small automatic script that checks one thing works, and yells if it doesn't</dd></div>
+        <div class="gloss-item"><dt>CI</dt><dd> — a robot that re-runs every test automatically on every proposed change</dd></div>
+        <div class="gloss-item"><dt>Branch protection</dt><dd> — a rule that a change literally can't reach the live site until CI passes</dd></div>
+        <div class="gloss-item"><dt>Characterization test</dt><dd> — writing down what the code does today, not deciding what it should do</dd></div>
+        <div class="gloss-item"><dt>Accessibility smoke test</dt><dd> — an automatic check that screen-reader / keyboard-only visitors can still use it</dd></div>
+      </div>
+
+      <div class="analogy">
+        <span class="tag">The everyday version</span>
+        <p>
+          Up to this point, terminal staff could walk any new procedure straight onto
+          a departing ferry — no inspection, no manifest check, nothing. This epic
+          installs the boarding checkpoint: a laminated card describing exactly how
+          the current ferry runs today, board by board, so nobody "improves"
+          something by accident; a guard who walks the entire terminal trying every
+          door with no key, confirming all the staff-only and member-only doors are
+          actually locked; a ramp check confirming a wheelchair could still get up the
+          gangway on the six main public docks; and a chain across the gangway that
+          simply will not lift until every one of those checks comes back clean. From
+          here on, nothing boards without clearing the checkpoint first.
+        </p>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <div class="step-body">
+            <b>Write down exactly how the ferry runs today</b> — the doors, the
+            schedule board, the busyness gauge — as a checklist that fails loudly the
+            moment reality drifts from it.
+            <span class="real-name">= characterization tests for the data layer, login/sessions, the ferry forecast model, and the site's editable-text registry</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <b>Send a guard to rattle every staff-only and member-only door</b> with no
+            key and confirm each one holds; separately confirm the gangway is
+            wheelchair-accessible on the public docks.
+            <span class="real-name">= a generated test that hits every admin/portal route unauthenticated + an automated accessibility smoke test</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <b>Bolt a chain across the gangway</b> that only lifts once the guard's
+            report and the schedule checklist both come back clean — no exceptions,
+            not even for staff.
+            <span class="real-name">= a required CI check + branch protection on the main line, so nothing reaches production unreviewed</span>
+          </div>
+        </li>
+      </ol>
+
+      <details class="quiz">
+        <summary><span class="q-tag">Pop quiz</span> The guard finds one admin-only door swinging open with no key. What does this epic's rulebook say the guard does next?</summary>
+        <div class="answer">
+          <b>Stop and report it to the dockmaster — never fix it quietly, never wave
+          it through.</b> An actually-unlocked door would be a live security hole, and
+          this epic's whole job is to <i>detect and prove</i>, never to silently patch
+          or silently excuse a finding. As it happened, the guard walked every one of
+          the 24-plus staff doors and 12-plus member doors on this app and found them
+          all locked — so nothing needed handing off this time.
+        </div>
+      </details>
+    </section>
+
+    <!-- ================= E03 ================= -->
+    <section class="berth" id="e03">
+      <div class="berth-label">
+        <span class="berth-num">Berth 3</span>
+      </div>
+      <h2>Alarms, a Vault, and a Considered Move</h2>
+      <p class="epic-name">E03 — Ops floor + repo migration</p>
+
+      <p class="summary">
+        This epic gave the terminal an actual operations desk. Two watchdogs now page
+        a human the moment something breaks or goes dark. Every night, a copy of all
+        the terminal's records gets scrambled with a lock that only one specific key
+        (kept safely elsewhere) can open, and driven off-site — so a fire in the
+        terminal itself can't destroy the only copy. A second, private practice dock
+        went up — a working double of the real terminal — so risky changes get tried
+        there first. And the team looked into moving the whole terminal to a
+        different port, only to find the new port's slip already had someone else's
+        boat tied up in it — so the move is on hold. Everything else shipped anyway,
+        because none of it needed the move to happen first.
+      </p>
+
+      <div class="glossary">
+        <span class="glossary-title">Terms, translated</span>
+        <div class="gloss-item"><dt>Monitoring</dt><dd> — a service that watches your app and taps you on the shoulder when it breaks</dd></div>
+        <div class="gloss-item"><dt>Uptime check</dt><dd> — "is it on and responding right now," checked every few minutes</dd></div>
+        <div class="gloss-item"><dt>Encryption</dt><dd> — scrambling data with a secret key so only the matching key can read it</dd></div>
+        <div class="gloss-item"><dt>Staging</dt><dd> — a working practice copy of the real site, not shown to real visitors</dd></div>
+        <div class="gloss-item"><dt>Repo</dt><dd> — the master folder holding all the app's code plus its full history of changes</dd></div>
+        <div class="gloss-item"><dt>Token / secret</dt><dd> — a password-like string a robot uses instead of a human typing a real password</dd></div>
+      </div>
+
+      <div class="analogy">
+        <span class="tag">The everyday version</span>
+        <p>
+          The terminal gets an operations desk. Two watchdogs go in: one barks the
+          instant the ticket machine throws an error, one barks if the lights simply
+          go dark. Every night, the day's paperwork gets copied, locked in a code only
+          one specific key can open, and driven to a vault across town — so a fire at
+          the terminal can't wipe out the only copy. A second, smaller practice dock
+          goes up out back — same layout, same equipment, but nobody boards a real
+          ferry there, so new procedures get rehearsed first. And the operator seriously
+          considers relocating the whole terminal to a bigger port down the coast —
+          only to discover someone had already tied a rowboat up in that exact slip
+          and left it there. Rather than start that fight today, the move goes on the
+          shelf. The watchdogs, the vault, and the practice dock get built anyway —
+          none of them needed the new address.
+        </p>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <div class="step-body">
+            <b>Install two watchdogs</b> — one reports errors the instant they happen,
+            one checks the terminal is even open, every five minutes.
+            <span class="real-name">= server-side error monitoring (Sentry) + an uptime checker (UptimeRobot) on the health page and the live ferry feed</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <b>Every night, copy the day's records</b>, lock them with a key that
+            never leaves a specific safe, and store the locked copy somewhere else
+            entirely.
+            <span class="real-name">= an automated nightly backup, encrypted before it ever leaves the server, stored in off-site cloud storage; the private key lives only in a password manager</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <b>Build a practice dock for rehearsing risky changes</b>, and separately
+            weigh moving to a new port — proceed with the watchdogs and the vault
+            regardless of what happens with the move.
+            <span class="real-name">= a staging copy of the app for safe testing; a move to a different hosting account was evaluated, found blocked, and paused — everything else shipped anyway</span>
+          </div>
+        </li>
+      </ol>
+
+      <details class="quiz">
+        <summary><span class="q-tag">Pop quiz</span> Do the watchdogs, the vault, or the practice dock need the terminal to actually finish moving to the new port first?</summary>
+        <div class="answer">
+          <b>No — none of them depend on the move at all.</b> That's exactly why all
+          three finished even after the move itself got paused. Monitoring, backups,
+          and the practice dock attach to the terminal wherever it happens to be
+          docked right now; only the "new address" paperwork — the actual account
+          transfer — is the one thing sitting on the shelf, ready to pick back up if
+          and when the slip-squatting rowboat gets sorted out.
+        </div>
+      </details>
+    </section>
+
+  </div>
+
+  <footer class="closing">
+    <div class="eyebrow">How the three connect</div>
+    <h3>Same terminal, three passes</h3>
+    <p>
+      E01 patched real holes in a terminal that could never close. E02 built the
+      checkpoint so those holes — or new ones like them — can't slip back in by
+      accident. E03 gave the whole operation a watch desk, a vault, and a rehearsal
+      space, and quietly filed away a move that turned out not to be worth forcing
+      today.
+    </p>
+    <div class="thread">
+      <span>Fix what's broken</span>
+      <span class="arrow">&rarr;</span>
+      <span>Guard the gate</span>
+      <span class="arrow">&rarr;</span>
+      <span>Watch, back up, rehearse</span>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>
