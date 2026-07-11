@@ -9,8 +9,11 @@ Mat's decisions on evaluation, in plain terms:
 1. **Jobs board is IN.** Even though staff didn't list the GrowthZone jobs module among used features, Mat wants a jobs board in the app. It ships via E28 in its child-safety shape (Chamber-vetted employers only, moderated, no applicant intake in the app) and stays in the R4 gate checklist. E28 is a Phase-4 epic — with the relaxed timeline below, that sequencing works.
 2. **Every other module staff didn't name is DROPPED, no replacement:** lists/committees, MemberPlus, member forum, hot deals, store, forms, surveys, engagement scoring, sales funnel. If a need re-emerges later, it's a new feature request, not a migration obligation.
 3. **Ticketing is NOT currently used** (corrects the earlier read of the staff feature list — "events including ticketing" meant the calendar's capability, not active use). Paid ticketing is a **future feature request**: nothing to migrate, nothing gate-blocking. When wanted, the FR-A15 floor applies (deep-link out to an external provider — QB payment links / Eventbrite / Ticket Tailor / Zeffy-if-eligible); decide then.
-4. **Timeline: no huge rush.** The Chamber **just renewed** GrowthZone, so there's roughly a year of runway. The exact term-end date should still be pinned (one line in the contract or invoice) so the T−30 non-renewal deadline goes on a calendar now — a year passes fast and missing it costs ~$4k.
+4. **Timeline is now concrete: the renewal is in APRIL** (Mat, 2026-07-10 follow-up). The Chamber just renewed, so the current term runs to ~April 2027. Written non-renewal notice is due ≥30 days before term end — **target sending it by March 1, 2027** (safe whatever the exact April day turns out to be; pin the exact date from the renewal invoice when convenient). Working backwards: R2/R3 complete by ~February 2027, which leaves a comfortable ~7 months of build runway. The notice deadline is recorded as OPERATIONS §9 item 11 so it can't be missed.
 5. **Member roster received** — 2026-07-10 GrowthZone export analyzed in §2b below. Published dues tiers: [kingstonchamber.com/membership](https://kingstonchamber.com/membership/) (new structure effective June 1, 2026).
+6. **Dues payments currently run THROUGH GrowthZone** (Mat, 2026-07-10 follow-up): members pay GZ invoices online via GrowthZone's integrated processing. Two consequences: (a) the QB cutover is a real member-facing payment change — every member meets a new invoice format and payment link at their first post-cutover anniversary, and autopay enrollments start from zero; (b) the R0/R3 export sweeps must include GZ payment/payout history for reconciliation, and QuickBooks entries for the transition period need care so dues collected in GZ and dues collected in QB don't double-count.
+7. **QuickBooks commitment:** tier to be confirmed, but the Chamber will get whatever is needed and **will enable QuickBooks Payments**. (Simple Start suffices per §3 — nothing in this plan needs a higher tier.)
+8. **Constant Contact + email/newsletter templates are Mat's task**, bundled: when the CC export work gets set up, Mat gathers whatever access/info is needed and also exports the GZ email/newsletter templates then. Tracked as OPERATIONS §9 item 12.
 
 ## 1. Goal
 
@@ -63,7 +66,7 @@ Source: "Membership Report.xlsx", generated 2026-07-10 from the GrowthZone back 
 ## 4. Migration sequence (strangler — each phase ships value; each has an off-ramp)
 
 - **R0 — Audit & safety net (now, before anything else).**
-  1. **Find the GrowthZone renewal date and current contract price.** The contract auto-renews annually; non-renewal requires **written notice ≥30 days before term end**; fees are non-refundable; the ToS grants **no data-export rights after termination**. The renewal date is the project clock.
+  1. **The project clock is set: term ends ~April 2027** (renewal is April; Mat 2026-07-10). The contract auto-renews annually; non-renewal requires **written notice ≥30 days before term end**; fees are non-refundable; the ToS grants **no data-export rights after termination**. **Send notice by March 1, 2027** (OPERATIONS §9 item 11); confirm the exact April day from the renewal invoice and adjust if needed. All exports must be complete before the notice date.
   2. Staff audit checklist (§7) — 30 minutes with someone who has back-office access.
   3. **Full export sweep while subscribed** (repeatable; do a first pass now): contacts, memberships + history, open/historical invoices & payments, event history, committee/list rosters, directory listing content incl. images/descriptions, email templates + automated-communication definitions. Store in the Chamber's drive + the app's encrypted backup bucket.
   4. Generate the whole-calendar iCal feed (already OPERATIONS §9 item 6b).
@@ -98,13 +101,16 @@ A membership CRM is **member service, not tourism promotion**. This plan's rule 
 - Member roster: received and analyzed (§2b).
 - Everything unnamed: dropped (§0).
 
-**Still needed (small list now):**
+**Answered in the 2026-07-10 follow-up (Mat):**
+- Renewal month: **April** (term end ~April 2027; notice target March 1, 2027 — exact day still worth confirming from the invoice).
+- Dues payments: **collected through GrowthZone today** (online, integrated processing) — see §0 item 6 for the cutover consequences.
+- QuickBooks: tier to confirm, but the Chamber will get whatever is needed and **will enable QB Payments**.
+- Constant Contact + email/newsletter templates: **Mat's task, deferred to CC setup time** (OPERATIONS §9 item 12) — access and list inventory gathered when that work starts.
 
-1. **Exact GrowthZone term-end date** (one line on the renewal invoice/contract) — even with no rush, the **T−30 written-notice deadline goes on the calendar today**; missing it costs ~$4k.
-2. **QuickBooks:** which QBO tier the Chamber is on, and whether QuickBooks Payments is enabled.
-3. **Constant Contact lists** — concretely: in Constant Contact, open **Contacts → Lists** and note (a) which lists exist, and (b) which ones GrowthZone fills automatically (typically something like "Active Members" — the integration syncs GZ groups/segments into CC lists). Those auto-filled lists are what the app's export runbook must keep populated after GrowthZone is gone; if nobody knows, a screenshot of the Lists page is enough for Mat to work it out.
-4. **Dues payment path today:** do members pay GZ invoices online (GZ Pay / card) or by check? (Determines how much payment-behavior change the QB cutover asks of members.)
-5. **Email templates/automated communications worth keeping** — export during the R0 sweep.
+**Still open (tiny list):**
+
+1. Exact April day of term end (one line on the renewal invoice — refines the March 1 notice target).
+2. QBO tier confirmation (informational; Simple Start suffices either way).
 
 ## 8. Requirements & build-plan deltas (the follow-up worklist — NOT yet applied)
 
@@ -121,7 +127,7 @@ A membership CRM is **member service, not tourism promotion**. This plan's rule 
 ## 9. Open decisions
 
 1. ~~Proceed with the roll-off?~~ **Decided: yes, with modifications** (Mat, 2026-07-10 — §0). Chamber board briefing still worthwhile before R3 (the SoR flip) using §2b's 10%-of-dues number.
-2. **Timeline anchor:** just renewed → ~a year of runway; pin the exact term-end date and calendar the T−30 notice deadline now (audit item 1).
+2. ~~Timeline anchor~~ **Set: term ends ~April 2027; non-renewal notice by March 1, 2027** (OPERATIONS §9 item 11); R2/R3 target ~February 2027.
 3. ~~Paid-event ticketing provider~~ **Deferred: ticketing is a future feature** (not used today — §0). Provider options recorded in §2 for when it's wanted.
 4. **Lapse grace period** (recommend 60 days) and who confirms lapses.
 5. **Member email/PII posture** as SoR (consent + retention wording — E11 amendment). Note §2b: 166/174 active members have emails in the export, so this decision is now concrete.

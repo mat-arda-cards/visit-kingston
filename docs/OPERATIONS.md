@@ -468,6 +468,8 @@ Things a **person** (mostly the Chamber) must do — no code involved.
 | 8 | **Recruit hunt-reward businesses** — local perks (discount, sticker, free coffee) so finished scavenger hunts pay off; also needed before printing QR signage. | Chamber member outreach |
 | 9 | **Confirm The Kingston Coffee Company details** — newly opened, hours reported but unverified. | Chamber / phone |
 | 10 | **Resend email (before businesses self-serve)** — SPF + DKIM for `mail.explorekingstonwa.com` at NameHero so invite email works. Until then hand invite codes over directly. | SYNDICATION "Email" |
+| 11 | **Send the GrowthZone written non-renewal notice by March 1, 2027** — the contract auto-renews each April; notice must land ≥30 days before term end and missing it costs another non-refundable ~$4k year. Confirm the exact April term-end day from the renewal invoice and complete ALL data exports first (no export rights after termination). Full plan: docs/ROLLOFF-GROWTHZONE.md §4. | Mat + Chamber office — calendar this NOW |
+| 12 | **Constant Contact takeover (Mat)** — when the CC export work is set up: inventory which CC lists GrowthZone auto-fills (Contacts → Lists), gather whatever access is needed, export the GZ email/newsletter templates at the same time, and stand up the app→CC list-export runbook (docs/ROLLOFF-GROWTHZONE.md §3). | Mat, with Chamber CC login |
 
 ---
 
