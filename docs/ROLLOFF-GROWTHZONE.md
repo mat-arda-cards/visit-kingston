@@ -15,16 +15,17 @@ Machine-verified module states (probed 2026-07-10) plus product inventory. "Repl
 | Member/contact database + membership levels, statuses, join/drop lifecycle | **Yes (core)** | **App — native member store** (E16 re-charter) | The SoR flip. One-time migration import from final CSV exports |
 | Dues invoicing, renewals, payments | Yes → **already moving to QuickBooks** | **QuickBooks Online** | See §3. Audit: is GZ Pay in use anywhere (event door payments)? |
 | Public member directory | **Yes** (`/directory` live) | App directory (E17 import/claiming + self-service) | Already planned P0 scope |
-| Events calendar | **Yes** (`/events` live) | **App — already decided** (docs/adr/ADR-0002-app-first-events-and-manual-exports.md) | Transitional GrowthZone iCal ingest gets an end date |
-| Event registration/ticketing | Audit | Free RSVP in-app; paid ticketing deep-links out (FR-A15 floor) | If GZ registration is used for paid events, replacement = QB invoice links or org's own processor |
+| Events calendar | **Yes** (`/events` live; staff-confirmed) | **App — already decided** (docs/adr/ADR-0002-app-first-events-and-manual-exports.md) | Transitional GrowthZone iCal ingest gets an end date |
+| Event registration/ticketing | **Yes — including paid ticketing** (staff-confirmed 2026-07-10) | Free events: in-app RSVP (M-05-08). Paid events: **deep-link out to a ticketing provider** (FR-A15 floor — app never merchant-of-record) | Provider decision needed (§9): QB payment links (simplest, no attendee mgmt), Eventbrite (fees pass to buyers), Zeffy (free, but 501(c)(6) eligibility unverified — corpus's Zeffy-first pattern is for nonprofits), or Ticket Tailor. Audit which processor GZ ticketing uses today (GZ Pay?) |
 | Job postings | **Yes** (`/jobs` live) | App jobs board (E28, Tension-4 child-safety shape: vetted employers, no applicant intake) | |
 | Member application (join form) | **Yes** (`/member-application` live) | **App — NEW capability** (coverage gap; no M-xx owns it today) | Form → moderation queue → creates org + QB customer handoff |
-| eNews / mass email / automated communications | **Yes** (`/enews` live) | Planned Resend newsletter (FR-ORG-04) for public; **audit** what automated member emails exist (renewal reminders move to QB) | Member-only mailings are NOT LTAC-eligible — funding note in §6 |
-| Member portal (MIC/Info Hub: pay invoices, update profile) | **Yes** (`/MIC/login` live) | App business-owner portal (invite/claims) + QB emailed invoice links for payment | QBO's own portal is thin — the app is the member-facing surface |
+| **Constant Contact integration** (GZ syncs member lists to CC; CC is the Chamber's mail tool) | **Yes** (staff-confirmed 2026-07-10) | **Keep Constant Contact** — the app exports roster/segment lists to CC (manual CSV import first, CC v3 API later; agent-operable runbook, same posture as ADR-0002) | Simplifies the plan: no member-newsletter build needed. Renewal reminders move to QB; Resend stays tourist-side only. Member mailings = ops funding (§6) |
+| Member portal (MIC/Info Hub) — **a stated member benefit** | **Yes** (staff-confirmed; `/MIC/login` live) | App business-owner portal (invite/claims, profile self-service) + QB emailed invoice links for payment | QBO's own portal is thin — the app is the member-facing surface. The "member benefit" framing carries over: portal access is a membership entitlement |
+| **Automated member rolls on the website** (WP pages show auto-updating member lists from GZ) | **Yes** (staff-confirmed 2026-07-10) | **App-provided directory feed/embeddable widget** consumed by kingstonchamber.com | Small NEW capability: the app already plans public event feeds/widget (M-05-05/FR-EVT-09); a members/new-members equivalent is needed so the WP site never goes stale (§8) |
 | Hot deals, store, forms, surveys, news modules | **No (all off/404)** | Nothing to replace | Confirmed by probe — meaningfully shrinks the job |
-| Lists/Committees (rosters, mailing lists) | **Audit** | App groups or a simple spreadsheet until demand proven | Chambers often live on this — check before cutover |
+| Lists/Committees (rosters, mailing lists) | Not in staff's used-features list — **confirm unused** | App groups or a simple spreadsheet until demand proven | Cheap to confirm during the export sweep |
 | Reports/dashboards | Yes (implicitly) | App admin reports + QB reports | GZ reports are also the **export vehicle** for migration |
-| MemberPlus app / member forum / engagement scoring / sales funnel / chapters / certifications | Audit (likely unused) | Consciously dropped unless audit says otherwise | |
+| MemberPlus app / member forum / engagement scoring / sales funnel / chapters / certifications | Not in staff's used-features list — treat as unused | Consciously dropped | |
 | Website module hosting | **Yes** — `business.kingstonchamber.com` is GrowthZone-hosted pages wrapped in the WordPress theme | Retire the subdomain: repoint WP nav/widgets to the app, 301 the subdomain | On cancellation those pages go dead; inventory every WP link first |
 
 ## 3. Target architecture
@@ -34,6 +35,7 @@ Machine-verified module states (probed 2026-07-10) plus product inventory. "Repl
 - **App = membership SoR.** Native member store: org identity, membership status, level, renewal date, listing linkage, QB Customer ID. Entitlements derive from native fields (same four choke points — `can()`, `rankListings()`, `resolveMapView()`, feed keys — unchanged from E19). Member-facing surface = the app portal; admin surface = `/admin` (member administration stays off the tourist-facing app per the LTAC partition).
 - **QuickBooks = money SoR.** Annual dues as recurring invoices (one Product/Service item per membership level, mapped to a dues income account), auto-send + automatic reminders + customer Autopay. **Simple Start ($38/mo) is sufficient** — recurring invoices, reminders, autopay, ~30 customer custom fields (level dropdown + renewal date), CSV exports, and the full API/webhooks all exist on that tier (verified against Intuit's live matrix 2026-07-10; Simple Start is also exempt from Intuit's Aug 2026 price increase). Avoid depending on Customer Types (Plus-only).
 - **The boundary starts manual and agent-operable** (same posture as ADR-0002): app exports a renewal list → staff invoice in QB; staff run a QB paid/open-invoices report → update member status in the app (audited, admin-confirmed). **Later automation is effectively $0:** QBO webhooks fire on Invoice/Payment/Customer events and the free Builder API tier includes 500k reads/month — a ~200-member chamber uses well under 1% of that. "Payment received → member active" becomes an app webhook endpoint when manual gets old.
+- **Constant Contact stays the mail tool** (staff-confirmed in use). The roster→CC boundary is the same shape: the app exports member/segment lists as CSV for CC import (a documented, agent-operable runbook); Constant Contact's v3 API can automate list sync later. The app never sends member mailings itself; Resend remains tourist-side.
 - **Lapse semantics (proposal, needs sign-off):** unpaid dues past a grace period (recommend 60 days, Chamber confirms) → admin confirms lapse in the app → entitlements decay to community baseline; **listings never auto-unpublish** (E19's additive-only invariant carries over).
 
 **WA money facts for the QB setup:** plain chamber dues are bona fide dues — B&O-deductible under RCW 82.04.4282 and not a retail sale, so mark dues items **non-taxable**. Card fee 2.99% vs ACH 1% — steer members to ACH but never make ACH the *only* option (Intuit adds a $25 customer-paid fee on ACH-only invoices over $125). Autopay silently cancels whenever the recurring template's amount/terms change — every dues increase forces member re-enrollment, so the app should track autopay-enrollment status.
@@ -67,24 +69,28 @@ The hidden cost is **operational, not monetary**: support and stewardship (passw
 
 A membership CRM is **member service, not tourism promotion**. Per the corpus's unanimous ruling (00-DECISIONS §5, NFR-14, E18's ledger rules, Reconciliation Tension 5): every dollar of SoR build and operation is **Chamber ops money, never LTAC**; membership administration stays behind `/admin` and `/portal` so an LTAC reviewer auditing the deliverable sees a tourism app; the ~$3.9k/yr GrowthZone savings is ops money (not LTAC match); and the E18 cost-attribution ledger records the split. The tourist-facing calendar/directory surfaces remain LTAC-clean.
 
-## 7. Staff audit checklist (30 minutes, back-office access required)
+## 7. Staff audit — answered 2026-07-10 + remaining items
 
-1. **Contract:** renewal date, current annual price, any multi-year term. *(This sets the whole timeline.)*
-2. **GZ Pay:** is integrated payment processing enabled — for dues? event tickets? (Statements will show payouts.)
-3. **Automated communications:** which renewal reminders / onboarding emails / invoice emails fire automatically today? (They stop silently at cancellation.)
-4. **Lists/Committees:** which committees, mailing lists, and rosters live in GZ?
-5. **Info Hub usage:** do members actually log in — pay invoices online? update their own profiles? (Adoption is typically low; confirm.)
-6. **MemberPlus app adoption:** anyone using it?
-7. **Event registration:** were any paid/ticketed events run through GZ in the last year?
-8. **Member count + levels list** (exact level names — they become QB items and app levels).
-9. **QuickBooks:** which QBO tier is the Chamber on, and is QuickBooks Payments enabled?
-10. **Email templates/content worth keeping** (export before cancellation).
+**Staff-confirmed used features (2026-07-10):** (1) membership signup and renewal; (2) calendar and events **including ticketing**; (3) Constant Contact integration; (4) InfoHub access as a member benefit; (5) automated member rolls on the website. Not mentioned — treat as unused pending the export sweep: lists/committees, MemberPlus, forums, store, forms, surveys, hot deals, sales funnel.
+
+**Still needed:**
+
+1. **Contract:** renewal date, current annual price, any multi-year term. *(This sets the whole timeline — the single most important unknown.)*
+2. **Ticketing money path:** which processor GZ event ticketing uses (GZ Pay?) and roughly how many paid events/year + ticket volume (sizes the replacement).
+3. **Member count + levels list** (exact level names — they become QB items and app levels).
+4. **QuickBooks:** which QBO tier the Chamber is on, and whether QuickBooks Payments is enabled.
+5. **Constant Contact:** which lists/segments GZ currently syncs to CC (they must be reproduced from the app's exports).
+6. **Automated communications inventory:** renewal reminders / onboarding / invoice emails firing from GZ today (they stop silently at cancellation; QB reminders + CC replace them).
+7. **Email templates/content worth keeping** (export before cancellation).
 
 ## 8. Requirements & build-plan deltas (the follow-up worklist — NOT yet applied)
 
 - **Vision amendment (needs an explicit ADR):** the corpus's "never a bank, a CRM, or a chat app" boundary (00-VISION line 29) conflicts head-on with app-as-membership-SoR. Scope the amendment narrowly: *the Chamber's own roster* — still never a general CRM, never orgs' donor/member data (NFR-15 letter unchanged), still never a bank.
 - **New ADR-0003 (QuickBooks boundary):** money SoR vs membership SoR; manual agent-operable CSV interface both directions first; QB webhooks as the later automation; zero payment code in the app ever.
 - **New capability: member-application intake** (form → moderation → org + QB handoff) — currently a coverage gap in the 141-item backlog; must land in an epic per the no-silent-absence rule.
+- **New capability: directory feed/widget for the Chamber website** — replaces GrowthZone's auto-updating "member rolls" on kingstonchamber.com (staff-confirmed in use). Sibling of the planned events feed/widget (M-05-05/FR-EVT-09); likely lands in E23 syndication scope.
+- **New runbook: roster → Constant Contact list export** (manual CSV first, CC v3 API later) — replaces GrowthZone's CC sync; agent-operable per the ADR-0002 posture.
+- **Paid-event ticketing replacement decision** (see §9) — the FR-A15 deep-link-out floor means choosing an external provider, not building ticketing.
 - **Epic re-charters:** **E16 rewritten** (sync engine → one-time migration importer + native member store + native entitlements); **E24 cancelled** (close-out ADR); **E04 closed as walk-away**, replaced by the R4 migration-completeness gate; **E19 amended** (tier mapping reads native level / QB items instead of `ams_level_names`); **E18 amended** (ledger seeds: drop AMS-fee LTAC ask, drop GZ subscription, add QB as ops); **E12 amended** (transitional feed end date; whole-subdomain retirement, not just the events page); **E17/E11/E23/E28 touch-ups** (verification against native store; PII inventory covers native member tables; delete AMS channel refs; jobs board is the GZ-jobs replacement).
 - **Floors that get heavier:** MHMDA — the app becomes PII *custodian* for the roster (E16's exclude-email-by-default posture is incompatible with being the SoR; member contact fields now need inventory + retention + access/delete coverage per the E11 contract); backups — the rehearsed restore (M-20-01) and nightly JSON export must demonstrably cover the member tables, because post-cancellation they are the *only copy of the Chamber's roster*; records retention/legal hold (FR-A92) now covers membership applications and status changes.
 - **ADR-0001/0002 updates:** ADR-0001 gate closes as walk-away once this plan is accepted (its questions become moot); ADR-0002's transitional GrowthZone ingest gets an explicit end date (R3).
@@ -93,7 +99,7 @@ A membership CRM is **member service, not tourism promotion**. Per the corpus's 
 
 1. **Proceed with the roll-off?** (Mat + Chamber board — this document is the evaluation input.)
 2. **Timeline anchor:** GrowthZone renewal date (audit item 1) → work backwards; if renewal is close, decide whether to eat one more year or sprint R0–R4.
-3. **eNews/communications tool:** Resend-based newsletter (planned) vs the Chamber adopting a dedicated mail tool for member communications (funding: member mailings are ops, not LTAC).
+3. **Paid-event ticketing provider** (replaces GZ ticketing; app deep-links out per FR-A15): QB payment links (simplest, no attendee management), Eventbrite (per-ticket fees, passable to buyers), Zeffy (free — verify 501(c)(6) eligibility first), Ticket Tailor (flat low fee). Decide once audit item 2 sizes the volume.
 4. **Lapse grace period** (recommend 60 days) and who confirms lapses.
 5. **Member email/PII posture** as SoR (consent + retention wording — E11 amendment).
 6. **Cutover date for the `business.kingstonchamber.com` subdomain** (already flagged in ADR-0002, now scoped to the whole subdomain).
