@@ -445,7 +445,7 @@ both inputs fresh (commands in the script header), then
 
 | Source | URL | Access | Cost | Status in app |
 |---|---|---|---|---|
-| **explorekingstonwa.com — The Events Calendar REST** (discovery) | https://explorekingstonwa.com/wp-json/tribe/events/v1/events | Public Tribe REST, no key — the Chamber's own site, machine-readable | Free | **strongest ingest candidate** (would replace `src/lib/data/events.ts` seed) |
+| **explorekingstonwa.com — The Events Calendar REST** (discovery) | https://explorekingstonwa.com/wp-json/tribe/events/v1/events | Public Tribe REST, no key — the Chamber's own site, machine-readable | Free | lowest-precedence transitional feed per docs/adr/ADR-0002-app-first-events-and-manual-exports.md (in-app > GrowthZone > Tribe) |
 | Chamber GrowthZone calendar | https://business.kingstonchamber.com/events | Public HTML; per-event iCal `/events/ICal/[slug]-[id].ics`; calendar-wide feed **absent as of 2026-07 (see docs/adr/ADR-0001-ams-ground-truth.md; per-event iCal verified live)** | Free (iCal); REST may need a paid GrowthZone quote | seeded; iCal ingest planned |
 | Kingston Chamber WordPress (kingstonchamber.com) | /wp-json/tribe/events/v1/events | Tribe REST live but returns **0 events** — empty shell | Free | do not integrate |
 | Port of Kingston | https://portofkingston.org/wp-json/tribe/events/v1/events | Public Tribe REST, no key — ~38 events, structured | Free | planned supplement |
@@ -459,13 +459,15 @@ editable in the portal + admin). The app already emits its own events feed at
 ### Gotchas (load-bearing)
 
 - **Two Chamber domains.** kingstonchamber.com (WordPress, calendar **empty**) vs.
-  business.kingstonchamber.com (GrowthZone, the real data). And now a **third, better** source:
-  the Chamber's own explorekingstonwa.com runs The Events Calendar with a live Tribe REST API
-  — the discovery below is the strongest automation candidate.
-- **The GrowthZone calendar-wide feed is absent (verified 2026-07).** All five candidate URLs
-  checked — `/events/ical` is a soft-404 (see docs/adr/ADR-0001-ams-ground-truth.md; rerun
-  `npm run ams:checks` to re-verify). Whether the Chamber's plan can enable one is question 7 in
-  docs/chamber/ams-support-email.md. Prefer the explorekingstonwa.com Tribe REST if it holds.
+  business.kingstonchamber.com (GrowthZone — where Chamber-entered events live today). The
+  Chamber's own explorekingstonwa.com also runs The Events Calendar with a live Tribe REST API.
+  **Since ADR-0002 (2026-07-10), the app itself is the events system of record and entry point**;
+  GrowthZone (via the staff-generated whole-calendar iCal, OPERATIONS §9 item 6b) and Tribe are
+  transitional ingest feeds, precedence in-app > GrowthZone > Tribe.
+- **No publicly guessable GrowthZone calendar-wide feed (verified 2026-07).** All five candidate
+  URLs checked — `/events/ical` is a soft-404 (see docs/adr/ADR-0001-ams-ground-truth.md; rerun
+  `npm run ams:checks` to re-verify). Staff can generate a tokenized feed URL in the back office
+  (OPERATIONS §9 item 6b) — that staff-generated feed is the planned transitional ingest path.
 - **Dedupe or show triplicates.** July 4th and Kingston Public Market appear on multiple
   calendars — dedupe on normalized title + start date, prefer the Chamber record.
 - **Timezones/recurrence.** All feeds are America/Los_Angeles; expand RRULEs / VTIMEZONE or
@@ -523,10 +525,10 @@ authority. The survey is anonymous (zip-code micro-survey, method = Informal Sur
 1. **Get a WSDOT access code** — https://wsdot.wa.gov/traffic/api/, instant and free. Set
    `WSDOT_API_KEY`. (Live on Render already; keep it set.) Without it the app serves the
    bundled fallback and no live space/delays/vessels.
-2. **Verify the events feed to automate against** — first confirm the discovered
-   explorekingstonwa.com Tribe REST (`/wp-json/tribe/events/v1/events`) is stable and complete;
-   failing that, the calendar-wide feed is absent (docs/adr/ADR-0001-ams-ground-truth.md) —
-   whether the plan can enable one is question 7 of docs/chamber/ams-support-email.md.
+2. **Generate the GrowthZone whole-calendar iCal feed** (OPERATIONS §9 item 6b) — the
+   transitional ingest path now that the app is the events system of record per
+   docs/adr/ADR-0002-app-first-events-and-manual-exports.md; the Tribe REST feeds
+   (explorekingstonwa.com, Port of Kingston) are lower-precedence supplements.
 3. **Send the Kitsap Transit permission email** (lindsayc@kitsaptransit.com — the GTFS
    `feed_info` contact) for written OK to use the GTFS/GTFS-RT feeds in a Chamber tourism app;
    same email can resolve the **PugetPass contradiction**.

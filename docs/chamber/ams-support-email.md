@@ -6,7 +6,7 @@
 - **To:** websupport@growthzone.com
 - **Cc:** engagement@growthzone.com
 - **Phone fallback** if no reply in ~a week: 800-825-9171 (ask for WebSupport, then the Engagement team for API-access quotes).
-- **When the written reply arrives, forward it to Mat** so the answers can be recorded in docs/adr/ADR-0001-ams-ground-truth.md and the app's AMS integration work can proceed. Written answers matter — a phone summary can't close the gate.
+- **When the written reply arrives, forward it to Mat** so the answers can be recorded in docs/adr/ADR-0001-ams-ground-truth.md. The reply is informational — pricing intel for a possible 2027 LTAC-funded API purchase (see docs/adr/ADR-0002-app-first-events-and-manual-exports.md); app work proceeds meanwhile. Written answers still matter — a phone summary can't be recorded.
 
 ---
 

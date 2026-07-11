@@ -18,7 +18,7 @@ The original E04 run of this ADR concluded the Chamber's tenant was **ChamberMas
 
 ## Context
 
-GrowthZone (the vendor) markets two product lines with two documented API families: GrowthZone (staff app and tenants at `{subdomain}.growthzoneapp.com`, REST + OAuth/OIDC, support-configured webhooks) and ChamberMaster/MemberZone (v1 API at `api.micronetonline.com`, OData queries, `X-ApiKey` auth, no webhooks, access quote-gated through GrowthZone's Engagement team). The Chamber's tenant (3508) empirically straddles the naming: staff use the GrowthZone app while the public modules ride legacy-named infrastructure — so only a written vendor answer can establish which API family, auth model, and change-notification options apply. The v2 plan syncs the Chamber's member directory and events from its AMS (E16 inbound, E24 write-back) and reads membership level for entitlements, so designing against the wrong API — or an unquoted vendor fee — would sink those epics. This ADR records the machine-verifiable ground truth and holds the open questions only GrowthZone can answer in writing. Re-verify the machine-checkable half anytime with `npm run ams:checks`; the harness (`scripts/ams-ground-truth-checks.mjs`) writes its timestamped snapshot to `docs/adr/ams-ground-truth-checks.json` and doubles as the tenant-drift alarm. No AMS sync code may be written while this ADR reads BLOCKED-ON-HUMAN.
+GrowthZone (the vendor) markets two product lines with two documented API families: GrowthZone (staff app and tenants at `{subdomain}.growthzoneapp.com`, REST + OAuth/OIDC, support-configured webhooks) and ChamberMaster/MemberZone (v1 API at `api.micronetonline.com`, OData queries, `X-ApiKey` auth, no webhooks, access quote-gated through GrowthZone's Engagement team). The Chamber's tenant (3508) empirically straddles the naming: staff use the GrowthZone app while the public modules ride legacy-named infrastructure — so only a written vendor answer can establish which API family, auth model, and change-notification options apply. The v2 plan syncs the Chamber's member directory and events from its AMS (E16 inbound, E24 write-back) and reads membership level for entitlements, so designing against the wrong API — or an unquoted vendor fee — would sink those epics. This ADR records the machine-verifiable ground truth and holds the open questions only GrowthZone can answer in writing. Re-verify the machine-checkable half anytime with `npm run ams:checks`; the harness (`scripts/ams-ground-truth-checks.mjs`) writes its timestamped snapshot to `docs/adr/ams-ground-truth-checks.json` and doubles as the tenant-drift alarm. No AMS **API** sync code (rung 2+ / write-back) may be written while this ADR reads BLOCKED-ON-HUMAN; rungs 0–1 are ungated (see ADR-0002).
 
 ## Verified facts
 
@@ -99,12 +99,12 @@ Kingston is unincorporated Kitsap County, so the Kitsap County Lodging Tax Advis
 
 ## Decision
 
-TBD-HUMAN. No AMS sync code (E16/E24) may merge while this reads TBD-HUMAN.
+TBD-HUMAN. No AMS **API** sync code (E16 rung 2+ / E24) may merge while this reads TBD-HUMAN. Rungs 0–1 (CSV import, iCal ingest) are not gated here — they need no vendor grant and proceed under docs/adr/ADR-0002-app-first-events-and-manual-exports.md.
 
 ## Consequences
 
-- All AMS calls in later epics go through the `AmsProvider` interface (`ChamberMaster | GrowthZoneAMS | CSV | Null`) — built in E16, not before. Which concrete provider E16 implements first is decided by the written answer to Question 3.
-- Sync design defaults to **pull-based idempotent reconciliation** (nightly members, hourly events). Webhooks may exist for this tenant (Question 6) — a written vendor answer may upgrade the design, but E16 must not assume webhooks before that answer.
-- Entitlements are derived locally from polled member fields with "as-of last sync" semantics.
+- All AMS calls in later epics go through the `AmsProvider` interface (`ChamberMaster | GrowthZoneAMS | CSV | Null`) — built in E16, not before. Per ADR-0002 the first concrete provider is **CSV** (rung 0, no vendor grant needed); the written answer to Question 3 decides only which *API* provider a future rung 2 would implement.
+- If rung 2 is ever purchased, sync design defaults to **pull-based idempotent reconciliation** (nightly members, hourly events). Webhooks may exist for this tenant (Question 6) — a written vendor answer may upgrade that design, but E16 must not assume webhooks before that answer. Until then, member data arrives by manual CSV export (ADR-0002).
+- Entitlements are derived locally from mirrored member fields with "as-of last sync" semantics — under ADR-0002 that means as-of-last-export.
 - AMS-synced member PII falls inside the MHMDA data-minimization floor (E11).
 - The drift alarm is **tenant parity**: if either hostname stops serving TenantId 3508, this ADR is stale and must be redone — `npm run ams:checks` fails loudly on exactly that drift. DNS/PRODID naming changes alone are informational, not proof of anything (see Correction).
