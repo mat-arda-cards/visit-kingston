@@ -90,7 +90,7 @@ Blueprint that declares the Docker web service, a **1 GB Disk mounted at
 
 **Steps (as deployed):**
 
-1. **New → Blueprint**, point at the GitHub repo `mat-arda-cards/visit-kingston`.
+1. **New → Blueprint**, point at the GitHub repo `matthager12-collab/ExploreKingstonChamberApp`.
    Render reads `render.yaml`, builds the `Dockerfile`, and provisions the web
    service + Disk. (The repo is **public** — a Render↔GitHub sync issue was
    sidestepped by making it public; there are no secrets in git, so this is

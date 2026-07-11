@@ -6,7 +6,7 @@
 
 ## Current reality (as configured)
 
-- **Remote:** `origin` → `https://github.com/mat-arda-cards/visit-kingston.git`
+- **Remote:** `origin` → `https://github.com/matthager12-collab/ExploreKingstonChamberApp.git`
 - **Visibility:** **PUBLIC** on GitHub. (Made public to bypass a
   Render↔GitHub sync issue during Phase-1 launch. No secrets are in git —
   every `.env*` is gitignored; the one committed sample is
@@ -107,7 +107,7 @@ and watch the Render deploy + `/api/health` after pushing (see
 
 ## If you ever need to reset / re-clone
 
-1. Clone: `git clone https://github.com/mat-arda-cards/visit-kingston.git`.
+1. Clone: `git clone https://github.com/matthager12-collab/ExploreKingstonChamberApp.git`.
 2. Set repo-local identity:
    ```bash
    git config user.email "matt.hager12@gmail.com"
