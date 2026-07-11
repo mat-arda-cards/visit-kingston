@@ -13,7 +13,7 @@ Phase-2 Vercel path, DNS, pre-launch checklist),
 [SYNDICATION.md](SYNDICATION.md) (outbound-channel plan).
 
 > **Naming.** Product/UI name is **Explore Kingston**; the repo/dir is
-> `visit-kingston` (public GitHub `mat-arda-cards/visit-kingston`); the Render
+> `visit-kingston` (public GitHub `matthager12-collab/ExploreKingstonChamberApp`); the Render
 > service and Fly app are named `explore-kingston`.
 
 ---
