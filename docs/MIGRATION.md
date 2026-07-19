@@ -1,60 +1,66 @@
-# Repo migration runbook (E03) — TRANSFER IN FLIGHT
+# Repo migration runbook (E03) — COMPLETE 2026-07-11
 
 Ordered steps to stand up the ops floor (Sentry, UptimeRobot, encrypted
 off-site backups, staging) and move this repo to a new GitHub account. The
 ops floor is **done** (see the completion log).
 
-**Status (2026-07-10, evening): the transfer is INITIATED and pending
-acceptance.** Mat took the hold off (the blocking placeholder repo at the
-target name is gone), and the transfer of `mat-arda-cards/visit-kingston` →
+**Status: COMPLETE.** The transfer of `mat-arda-cards/visit-kingston` →
 `matthager12-collab/ExploreKingstonChamberApp` was initiated via the GitHub
-API. It completes when Mat accepts the email invitation on the
-`matthager12-collab` account (invitations expire after ~1 day — if it lapses,
-re-initiate with:
-`gh api repos/mat-arda-cards/visit-kingston/transfer -f new_owner=matthager12-collab -f new_name=ExploreKingstonChamberApp`).
+API on 2026-07-10 and **accepted on 2026-07-11**. The repo now lives at
+`matthager12-collab/ExploreKingstonChamberApp` and is **public**. The local
+`origin`, the GitHub Actions secrets/variables, and Render (service +
+Blueprint) were all re-pointed at the new repo the same day, and `main`
+auto-deploys to production again. The old `mat-arda-cards/visit-kingston` URL
+still resolves via GitHub's transfer redirect — that redirect is a trap, not a
+fallback (see Traps below); never target it. Everything below this line is
+retained as the procedural record of how the move was done.
 
-**Remaining sequence (morning checklist, IN ORDER):**
+**Sequence as executed (2026-07-10 → 2026-07-11):**
 
-1. **Don't accept while an agent session is mid-push.** The moment the
-   transfer is accepted, pushes authenticated as `mat-arda-cards` stop
-   working (the repo becomes `matthager12-collab`'s; public reads and the
-   old-URL redirect keep working). Finish or pause any running epic first.
-2. **Accept the transfer** (email link on the `matthager12-collab` account).
-   The repo lands already named `ExploreKingstonChamberApp`. Keep it public.
-3. **Mint the new PAT** (step 6 below: `repo` + `workflow` scopes on
-   `matthager12-collab`) and write it to `.env.git` per step 6.3 — this is
-   what restores push access for local/agent work. Optionally also
-   `gh auth login` with the new account.
-4. **Render re-link** (step 7 below): install the Render GitHub App on
-   `matthager12-collab`, point the service + Blueprint at the new repo.
-   Until this is done, pushes to `main` do NOT auto-deploy — fine for hours,
-   not for days.
-5. Tell Claude — it runs `scripts/verify-migration.sh`, updates the local
-   remote, and sweeps docs/memory for the old slug.
+1. **Done — don't accept while an agent session is mid-push.** No session was
+   mid-push. The moment the transfer was accepted, pushes authenticated as
+   `mat-arda-cards` stopped working (the repo became `matthager12-collab`'s;
+   public reads and the old-URL redirect keep working).
+2. **Done (2026-07-11) — transfer accepted** via the email link on the
+   `matthager12-collab` account. The repo landed already named
+   `ExploreKingstonChamberApp`, and is public.
+3. **Done — new PAT minted** (step 6 below: `repo` + `workflow` scopes on
+   `matthager12-collab`) and written to `.env.git` per step 6.3, restoring
+   push access for local/agent work.
+4. **Done (2026-07-11) — Render re-linked** (step 7 below): the Render GitHub
+   App is installed on `matthager12-collab`, and the service + Blueprint point
+   at the new repo, branch `main`, auto-deploy **on**. Every merge to `main`
+   now deploys to production with no human trigger — and each deploy is a
+   ~15s full outage, because both services mount a persistent disk, so Render
+   must stop the old instance before starting the new one. See "Migrations
+   under auto-deploy" and "Every deploy is a brief outage" in
+   `docs/RUNBOOK-CUTOVER.md`.
+5. **Done — Claude ran `scripts/verify-migration.sh`**, updated the local
+   remote, and swept docs/memory for the old slug.
 
 Historical note (2026-07-07): the transfer was briefly ON HOLD because the
-target name was occupied by a same-named placeholder repo; that conflict no
-longer exists. Steps **8** (GitHub Actions secrets/variables) and **9**
-(Cloudflare R2) were completed on the current repo and transfer with it.
+target name was occupied by a same-named placeholder repo; that conflict was
+cleared before the transfer ran. Steps **8** (GitHub Actions secrets/variables)
+and **9** (Cloudflare R2) were completed before the transfer and moved with it.
 
 ## Recorded slugs
 
-- **Current repo:** `mat-arda-cards/visit-kingston`
-  (`https://github.com/mat-arda-cards/visit-kingston.git`) — a personal
-  GitHub account, despite the arda-ish name. Staying here for now.
-- **Originally planned new repo (on hold):** `matthager12-collab/ExploreKingstonChamberApp`
-  (`https://github.com/matthager12-collab/ExploreKingstonChamberApp.git`) —
-  a different personal GitHub account, currently occupied by an unrelated
-  placeholder repo (see Status above).
+- **Current repo:** `matthager12-collab/ExploreKingstonChamberApp`
+  (`https://github.com/matthager12-collab/ExploreKingstonChamberApp.git`) — a
+  personal GitHub account, **public**. This is the canonical slug; use it
+  everywhere, including every `gh ... -R` flag.
+- **Former slug (redirect only — do not use):** `mat-arda-cards/visit-kingston`
+  (`https://github.com/mat-arda-cards/visit-kingston.git`) — a different
+  personal GitHub account, despite the arda-ish name. GitHub still redirects
+  it, which is exactly what makes a stale `origin` or a stale `-R` look like
+  it worked.
 
-## Why a cross-account transfer, not a rename (background, not happening now)
+## Why a cross-account transfer, not a rename (rationale, executed 2026-07-11)
 
-The plan was to move the repo from `mat-arda-cards` — despite the name, one
-of Mat's personal accounts, not the arda work account — to `matthager12-collab`,
-a distinct personal account, renaming it to `ExploreKingstonChamberApp` at the
-same time. GitHub's transfer preserves stars/issues and leaves a redirect at
-the old URL. This is documented for reference only; it is **not currently
-happening** (see Status above).
+The repo moved from `mat-arda-cards` — despite the name, one of Mat's personal
+accounts, not the arda work account — to `matthager12-collab`, a distinct
+personal account, renaming it to `ExploreKingstonChamberApp` at the same time.
+GitHub's transfer preserves stars/issues and leaves a redirect at the old URL.
 
 ---
 
@@ -115,7 +121,11 @@ monitored while it happens.
 4. Delete the local file: `rm key.txt`. The private key only ever lives in
    1Password from this point on.
 
-### 5. GitHub account + transfer
+### 5. GitHub account + transfer — DONE 2026-07-11
+
+Outcome: transferred to `matthager12-collab`, renamed to
+`ExploreKingstonChamberApp`, confirmed **public**. Nothing to do here; the
+steps are kept as the record of what was performed.
 
 1. Confirm `matthager12-collab` exists and has 2FA enabled.
 2. On the **old** account (`mat-arda-cards`): repo Settings → Danger Zone →
@@ -142,15 +152,19 @@ monitored while it happens.
    chmod 600 .env.git
    ```
 
-### 7. Render re-link
+### 7. Render re-link — DONE 2026-07-11
+
+Outcome: the `explore-kingston` service **and** the Blueprint are linked to
+`matthager12-collab/ExploreKingstonChamberApp`, branch `main`, auto-deploy
+**on**. Production has deployed from the new repo many times since. Steps kept
+as the record of what was performed.
 
 1. Install/authorize the Render GitHub App on `matthager12-collab` for the
    new repo.
 2. In the Render dashboard, point the `explore-kingston` service **and** the
    Blueprint at `matthager12-collab/ExploreKingstonChamberApp`, branch
-   `main`, auto-deploy **on**. **Do not disconnect the old link** until the
-   agent step below (agent step 4) has proven a real deploy from the new
-   repo.
+   `main`, auto-deploy **on**. (The old link was kept until a real deploy from
+   the new repo had been proven — it since has been, repeatedly.)
 3. Approve the Blueprint sync that creates `explore-kingston-staging` (+ its
    `data-staging` disk) — this is the new-spend sign-off for staging
    (~$7.25/mo + ~$0.25/mo disk, pre-approved in the v2 budget; you're
@@ -159,10 +173,19 @@ monitored while it happens.
    `NEXT_PUBLIC_SITE_URL` (the staging service's own `onrender.com` URL, once
    Render assigns it), `SENTRY_DSN`, `BACKUP_TOKEN`, `FERRY_OBSERVE_TOKEN`.
 
-### 8. GitHub Actions secrets/variables — NOT on hold, do this on the current repo
+### 8. GitHub Actions secrets/variables — DONE
 
-The transfer is on hold, but `backup-offsite.yml` and the ferry crons still
-need these set on `mat-arda-cards/visit-kingston` to actually run:
+`backup-offsite.yml` and the ferry crons need these to run. They were set
+before the transfer and moved with it, so they now live on
+`matthager12-collab/ExploreKingstonChamberApp` (see the completion log).
+Verify — always against the new slug, never the redirect:
+
+```bash
+gh secret   list -R matthager12-collab/ExploreKingstonChamberApp
+gh variable list -R matthager12-collab/ExploreKingstonChamberApp
+```
+
+What was set:
 
 1. Create Actions **secrets** (Settings → Secrets and variables → Actions →
    Secrets):
@@ -224,11 +247,16 @@ Record here once done:
    GH_TOKEN=$(grep -m1 GITHUB_TOKEN .env.git | cut -d= -f2) \
      gh workflow run backup-offsite.yml -R matthager12-collab/ExploreKingstonChamberApp
    ```
-4. Push an empty commit to `main` (via PR if branch protection requires) and
-   watch Render auto-deploy fire from the **new** repo; confirm
-   `/api/health` returns 200 after the deploy. This is the single most
-   important check in this whole runbook — Render auto-deploy dying silently
-   after a repo re-link is the worst failure mode here.
+4. **Done — proven many times over.** Production auto-deploys `main` from the
+   new repo on every merge, and `/api/health` returns 200 with `dbOk: true`.
+   Do **not** re-run this as a casual probe. A merge to `main` is a real
+   production deploy, and because both Render services mount a persistent disk
+   only one instance can hold it — so Render stops the old instance before
+   starting the new one. Every deploy is therefore a ~15s **full outage**, and
+   a release that never goes healthy leaves production 502ing: it does not
+   fail closed, and the old release does not keep serving. See "Migrations
+   under auto-deploy" and "Every deploy is a brief outage" in
+   `docs/RUNBOOK-CUTOVER.md`.
 5. Fill in the completion log below, including a Sentry test-event id if one
    is available (a deliberate staging-only error, or "none yet — wiring
    verified by config" if you didn't force one).
@@ -271,12 +299,12 @@ Fill in as Part B executes:
 
 | Item | Value |
 |---|---|
-| Migration date | N/A — transfer on hold (see Status above) |
+| Migration date | 2026-07-11 — transfer accepted on `matthager12-collab`; repo is now `matthager12-collab/ExploreKingstonChamberApp`, public. Render re-linked the same day |
 | Part A PR | [#2](https://github.com/mat-arda-cards/visit-kingston/pull/2) merged 2026-07-10; follow-up [#3](https://github.com/mat-arda-cards/visit-kingston/pull/3) (this file's step-8 clarification) merged same day |
 | Production | Live on the merged E03 code — `/api/health` 200, `/robots.txt` disallows only `/admin` `/portal` `/api`, `/api/ferry/observe` correctly 401s without a token |
 | Staging | Live at `https://explore-kingston-staging.onrender.com` — auto-created by the Blueprint sync (no separate spend-approval prompt appeared), `staging` branch pushed to match `main`, `/robots.txt` correctly returns a bare `Disallow: /` (`NOINDEX=1`) |
-| GitHub Actions secrets/variables (current repo) | `BACKUP_TOKEN` + `FERRY_OBSERVE_TOKEN` secrets and `FERRY_OBSERVE_URL` + `BACKUP_AGE_RECIPIENT` variables all set on `mat-arda-cards/visit-kingston`; `ferry-observe`/`ferry-accuracy` cron runs confirmed succeeding |
-| New 1Password item — GitHub PAT | Not applicable — transfer on hold, current PAT unchanged |
+| GitHub Actions secrets/variables | `BACKUP_TOKEN` + `FERRY_OBSERVE_TOKEN` secrets and `FERRY_OBSERVE_URL` + `BACKUP_AGE_RECIPIENT` variables were set pre-transfer on `mat-arda-cards/visit-kingston` and moved with the repo; they now live on `matthager12-collab/ExploreKingstonChamberApp`. `ferry-observe`/`ferry-accuracy` cron runs confirmed succeeding |
+| New 1Password item — GitHub PAT | _(item name)_ — new PAT minted on `matthager12-collab` (`repo` + `workflow`) after the 2026-07-11 transfer and written to `.env.git`; record the 1Password item name here |
 | New 1Password item — age backup key | _(item name)_ — saved by Mat; local keypair file generated in agent scratchpad and deleted after confirmation |
 | age public key (`BACKUP_AGE_RECIPIENT`) | `age18u4k3yx4qt3pdtqmx8x6as47uzu4vevdecnx5dkkeljy7fd9ha9s5zr5uh` (not secret — becomes the repo variable in human step 8) |
 | UptimeRobot monitors created | Yes — "Explore Kingston — /api/health" + "Explore Kingston — /api/ferry/status", 5-min interval, email alerts on |

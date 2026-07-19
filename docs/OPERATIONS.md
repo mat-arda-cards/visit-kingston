@@ -22,9 +22,11 @@ Phase-2 Vercel path, DNS, pre-launch checklist),
 
 1. **Postgres is the structured-data home; `DATA_DIR` keeps the images**
    (since E05). Every account, portal edit, ferry override, analytics and
-   survey row lives in Neon Postgres (`record` + append tables; writes go
-   through the audited choke point `src/lib/db/records.ts`). The `DATA_DIR`
-   directory (resolved by `src/lib/data-dir.ts`) holds hunt photos and map
+   survey row lives in Neon Postgres (accounts in the dedicated
+   `users`/`orgs`/`invites` tables since E06, everything else in `record` +
+   the append tables; writes go through the audited choke point
+   `src/lib/db/records.ts`). The `DATA_DIR` directory
+   (resolved by `src/lib/data-dir.ts`) holds hunt photos and map
    images (until E15). Code, seed content, brand assets, and the generated
    parking overlay are all reproducible from git + `npm install`. Back up
    **both** Neon (PITR/branching) and `DATA_DIR`.
@@ -85,8 +87,8 @@ on Render; they belong only to a Vercel deployment (§7, `.env.production.exampl
 2. **Bootstrap the first admin:** set `SETUP_TOKEN` in `.env.local` (any string;
    the endpoint 403s fail-closed without it), then visit `/portal/setup` and
    enter that same value in the "Setup token" field. It works **only while
-   zero users exist** (the `auth-users` records) — it creates the first admin
-   account (role `admin`, empty `linkedIds`), signs you in, then locks itself
+   zero users exist** (the `users` table) — it creates the first admin
+   account (role `admin`, no org scoping), signs you in, then locks itself
    forever (`/api/auth/setup` returns 403 once any user exists; the endpoint is
    also rate-limited to 5 attempts). **E06 removed the old "/admin is open with
    an amber banner until the first admin exists" grace** — `/admin` now always
@@ -167,7 +169,7 @@ first so a write doesn't race the delete.
 
 | To reset… | Delete… | Effect |
 |---|---|---|
-| All accounts + invites | `auth/users.json` and `auth/invites.json` | `/portal/setup` bootstrap becomes available again |
+| All accounts + invites | `DELETE FROM invites; DELETE FROM users; DELETE FROM orgs;` against your **local dev database** — since E06 accounts live in those tables, not in `record` or `auth/*.json` (those files are pre-E05 only) | `/portal/setup` bootstrap becomes available again |
 | One content domain | `stores/<name>.json` | That domain reverts to its seed in `src/lib/data/` |
 | Content-CMS edits | `stores/site-copy.json` (+ `site-pages.json` for visibility) | Copy reverts to `src/lib/site-copy-registry.ts`; all pages visible again |
 | Ferry facts | `stores/ferry-info.json` | Reverts to `src/lib/data/ferry-info.ts` (payment/boarding-pass/cash-tips/sources) |
@@ -209,8 +211,14 @@ that would break Chamber email) is **deferred until launch**. See
 
 ### Redeploy / rollback
 
-- **Redeploy:** push to the tracked branch → Render rebuilds the Docker image
-  and swaps in the new container. The `/data` disk persists across the swap.
+- **Redeploy:** merge to `main` → Render rebuilds the Docker image and starts
+  the new container. The `/data` disk persists across the swap, but the swap is
+  **not** hot: both services mount a persistent disk that only one instance can
+  hold, so Render **stops the old container before starting the new one**. Every
+  deploy — including the rollback below — is a **~15 s full outage**, and there
+  is no human step: every merge to `main` auto-deploys production. See
+  [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) "Every deploy is a brief outage" and
+  "Migrations under auto-deploy".
 - **Env change:** edit in the Render dashboard and trigger a deploy. Note a
   `NEXT_PUBLIC_*` change requires a **rebuild** (build-time inlining), not just a
   restart.
@@ -724,7 +732,13 @@ probe couldn't write to `DATA_DIR` — on Render the `/data` disk is unmounted
 or read-only; check the disk is attached and `DATA_DIR=/data` (locally, that
 `.data` is writable). `dbOk:false` (E05) means Postgres didn't answer —
 `DATABASE_URL` missing/wrong or Neon unreachable. Either way Render withholds
-traffic (the health gate doing its job, keeping the previous release serving).
+traffic from the unhealthy release — but **that does not keep the previous
+release serving**. Both services mount a persistent disk only one instance can
+hold, so the old container was already stopped before this one started: a
+release that never goes green means the site is **DOWN (502)**, not held back
+(verified on staging 2026-07-19). Fix the env var / database and redeploy, or
+roll back to a known-good commit immediately — see
+[RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) "Every deploy is a brief outage".
 The 503 body still reports the resolved `dataDir`, which is the first thing to
 confirm.
 
