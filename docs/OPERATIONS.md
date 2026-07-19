@@ -33,7 +33,9 @@ Phase-2 Vercel path, DNS, pre-launch checklist),
    back a bad release: both Render services mount a persistent disk, so the old
    instance must stop before the new one starts. A release without a working
    `DATABASE_URL` takes the service DOWN (verified on staging 2026-07-19).
-   Always validate the URL with `psql "<url>" -c "select 1"` before setting it.
+   Always validate the URL before setting it — see the pre-flight in
+   [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md), which has a node path because
+   `psql` is not installed on the operator's Mac.
    The remaining env-detected seams cover only images (Vercel Blob when
    `BLOB_READ_WRITE_TOKEN` is set, else the disk) and rate limiting (Upstash
    when set, else in-process). On Render only `DATABASE_URL` + `DATA_DIR` are
@@ -86,13 +88,21 @@ on Render; they belong only to a Vercel deployment (§7, `.env.production.exampl
    zero users exist** (the `auth-users` records) — it creates the first admin
    account (role `admin`, empty `linkedIds`), signs you in, then locks itself
    forever (`/api/auth/setup` returns 403 once any user exists; the endpoint is
-   also rate-limited to 5 attempts). Until the first admin exists, `/admin` is
-   open with a loud amber banner so bootstrap can't lock itself out
-   (`src/app/admin/layout.tsx`).
-3. **Mint invites:** as admin go to `/admin/accounts`. Each invite code is tied
-   to a role (`business` / `nonprofit` / `admin`) and the listing/org ids that
-   account may edit (`linkedIds`). Hand the code to the business; they redeem it
-   at `/portal/join`. (`/api/auth/login`, `/setup`, `/redeem` are rate-limited.)
+   also rate-limited to 5 attempts). **E06 removed the old "/admin is open with
+   an amber banner until the first admin exists" grace** — `/admin` now always
+   redirects to `/portal`, and `/portal` redirects to `/portal/setup` while
+   zero users exist, so bootstrap still works without ever exposing `/admin`
+   (`src/app/admin/layout.tsx`, `src/proxy.ts`).
+3. **Mint invites:** as admin go to `/admin/accounts`. Since E06 an invite is
+   tied to one of **five** roles (`admin` / `moderator` / `org-editor` /
+   `member-business` / `viewer`), carries a **14-day expiry**, and may be bound
+   to a specific email — binding is **required** for an `admin` invite, so a
+   forwarded code can never be a bearer admin grant. Org roles attach to an
+   organization (join an existing one or create it on redemption); the listing
+   ids an account may edit live on that org as `linked_ids`, not on the user.
+   Hand the code over; they redeem it at `/portal/join`, and you can revoke an
+   un-redeemed code from the same page. (`/api/auth/login`, `/setup`, `/redeem`
+   are rate-limited.)
 4. Portal edits (hours, listings, events, volunteer needs) land in the
    `record` table and appear on public pages within ~60 s (ISR).
 
@@ -396,6 +406,18 @@ bearer grant on the whole site.
 
 ### Deploy day: everyone signs in again (one time)
 
+> **✅ DONE on production, 2026-07-19.** Auth v2 is live and the accounts are
+> migrated. Kept as the procedure for the next migration-bearing release.
+>
+> ⚠️ **It did not go to plan, and the lesson generalizes.** The code merged to
+> `main` and auto-deployed BEFORE the production migration ran, so production
+> served auth-v2 against an empty `users` table and nobody could sign in for
+> ~3 hours (the public site was unaffected). Read
+> **[Migrations under auto-deploy](RUNBOOK-CUTOVER.md#migrations-under-auto-deploy)**
+> before shipping anything like this again. Short version: `main` auto-deploys,
+> so **run the production migration BEFORE merging the PR that reads the new
+> tables.**
+
 The auth-v2 release changes the session-token format (it adds the `sv`
 revocation claim). Tokens without it cannot be revoked, so they are not
 honored.
@@ -405,7 +427,12 @@ are roughly 20 accounts and they are all known to the Chamber — announce it
 first. Nobody loses data, nobody needs a new password: they sign in again with
 the credentials they already have.
 
-Order of operations (staging first, then production in a quiet window):
+Order of operations (staging first, then production in a quiet window — and
+note step 0, which is the one that was missed):
+
+0. **Confirm the migration has run against the target BEFORE the code that
+   needs it reaches that target.** For production that means: run the migration
+   first, then merge. There is no gap between merging and deploying.
 
 1. Apply the Drizzle migration (`npm run db:migrate`).
 2. Dry-run, and **point `--data-dir` at an empty directory**:
