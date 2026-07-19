@@ -404,12 +404,39 @@ the credentials they already have.
 Order of operations (staging first, then production in a quiet window):
 
 1. Apply the Drizzle migration (`npm run db:migrate`).
-2. `node scripts/migrate-auth-v2.mjs --dry-run` — read the diff. It exits
-   **2** and writes nothing if anything is ambiguous (two accounts sharing a
-   listing id, colliding emails, an unmappable role). Resolve those by hand
-   and re-run; do not "just apply".
-3. `node scripts/migrate-auth-v2.mjs --apply`. Safe to re-run — it upserts.
-4. Deploy the code.
+2. Dry-run, and **point `--data-dir` at an empty directory**:
+
+   ```bash
+   node scripts/migrate-auth-v2.mjs --data-dir "$(mktemp -d)" --dry-run
+   ```
+
+   Read the diff. It exits **2** and writes nothing if anything is ambiguous
+   (two accounts sharing a listing id, colliding emails, an unmappable role).
+   Resolve those by hand and re-run; do not "just apply".
+
+   **Why the empty `--data-dir`** (found during the 2026-07-19 staging
+   rehearsal): the script reads BOTH legacy homes — `<data-dir>/auth/*.json`
+   and the `record` table — and HALTS if both hold users, because merging them
+   could silently drop or resurrect accounts. When you run this from a local
+   checkout against a REMOTE database, your own stale `.data/auth/users.json`
+   (a dev leftover) counts as the second source and trips that guard:
+
+   ```
+   HALTED: CONFLICT: both legacy sources hold users — 1 in
+   <data-dir>/auth/users.json and 2 in the record table
+   ```
+
+   That is the guard working, not a bug — but here the "conflict" is just your
+   laptop. An empty `--data-dir` makes the database the only source, which is
+   what you want for staging and production. Omit it **only** when migrating a
+   host whose accounts really do live on disk (a pre-E05 release).
+
+3. `node scripts/migrate-auth-v2.mjs --data-dir "$(mktemp -d)" --apply`.
+   Safe to re-run — orgs and users upsert by id, and the `owner_org_id`
+   backfill only touches rows where it is still NULL.
+4. Deploy the code. **The auth tables must exist before the new code serves
+   traffic** — apply step 1's migration first, or the app boots against tables
+   it cannot see.
 5. Sign in yourself and confirm: an admin sees `/admin`, a business account can
    still edit its own listing and nothing else.
 
