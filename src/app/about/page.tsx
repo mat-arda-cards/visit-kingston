@@ -77,9 +77,10 @@ export default async function AboutPage() {
                 </li>
                 <li>
                   Device location, only when you tap a location feature (like &ldquo;what&apos;s
-                  open near me&rdquo;) — always behind the browser&apos;s permission prompt,
-                  rounded to about a block before it&apos;s stored, and reported only as
-                  neighborhood-level counts.
+                  open near me&rdquo;) — always behind the browser&apos;s permission prompt, and
+                  we store only the neighborhood it falls in (like &ldquo;Village Green&rdquo;),
+                  never a coordinate. Rounded coordinates recorded before this change are
+                  being purged.
                 </li>
                 <li>
                   When you post a photo at a scavenger-hunt stop, that photo and its location
@@ -96,9 +97,10 @@ export default async function AboutPage() {
                 <li>No accounts or sign-ins — nothing here needs one.</li>
                 <li>No cookies for tracking, no ad tech, and nothing is ever sold to anyone.</li>
                 <li>
-                  No precise location logging for analytics — outside the opt-in location
-                  features above, we only see the rough region a connection comes from, and even
-                  opted-in pings are coarsened to about a block before anything is stored.
+                  No location coordinates stored for analytics, ever — outside the opt-in
+                  location features above, we only see the rough region a connection comes
+                  from, and even opted-in pings are kept only as a named-neighborhood count.
+                  We also never record visits to food or health assistance resources.
                 </li>
                 <li>
                   No hidden uploads — the app only sends something you made when you deliberately

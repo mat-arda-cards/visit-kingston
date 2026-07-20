@@ -14,10 +14,16 @@
 // "geo-ping" events are the one exception where device coordinates arrive at
 // all, and only because the visitor tapped a location feature ("what's open
 // near me") and accepted the browser's permission prompt. Privacy invariants,
-// enforced HERE regardless of what the client sends:
+// enforced HERE regardless of what the client sends (E11 — the table-driven
+// ingest suite in src/app/api/__tests__/track-route.test.ts is the permanent
+// regression net for every one of these):
 //   - coordinates are validated to Kitsap-ish bounds, else dropped silently;
-//   - they are rounded to 3 decimals (~100 m — about a block) before storage;
-//   - a named area is classified server-side; nothing finer is ever stored.
+//   - they are rounded and classified into a named area server-side, then
+//     DISCARDED — only the area bucket is ever stored, never a coordinate;
+//   - outbound taps to food/health-assistance destinations and events on
+//     sensitive in-app paths are dropped entirely (never-track, not
+//     track-less: no count-only fallback) — src/lib/privacy/policy.ts;
+//   - "consent" events record only the notice version granted, no location.
 //
 // This endpoint always answers { ok: true } — telemetry must never break or
 // slow down a visitor's session.
@@ -31,6 +37,7 @@ import {
   type AnalyticsGeo,
 } from "@/lib/analytics-store";
 import { lookupGeo } from "@/lib/geoip";
+import { isSensitiveOutbound, isSensitivePath } from "@/lib/privacy/policy";
 import { checkRateLimit, clientKey } from "@/lib/rate-limit";
 
 const MAX_PATH = 200;
@@ -38,6 +45,7 @@ const MAX_SESSION_ID = 64;
 const MAX_HREF = 500;
 const MAX_LABEL = 120;
 const MAX_GEO_FIELD = 80;
+const MAX_NOTICE_VERSION = 16;
 const MAX_BODY_BYTES = 8_192;
 
 // Kitsap-ish bounding box for geo-pings. Anything outside is dropped
@@ -134,10 +142,14 @@ export async function POST(request: NextRequest) {
           ? "pageview"
           : body.type === "geo-ping"
             ? "geo-ping"
-            : null;
-    // Geo-ping beacons are coordinates + session only; default their path so
-    // the shared validation below still applies to pageviews/outbound.
-    const path = trunc(body.path, MAX_PATH) ?? (type === "geo-ping" ? "/" : undefined);
+            : body.type === "consent"
+              ? "consent"
+              : null;
+    // Geo-ping and consent beacons are payload + session only; default their
+    // path so the shared validation below still applies to pageviews/outbound.
+    const path =
+      trunc(body.path, MAX_PATH) ??
+      (type === "geo-ping" || type === "consent" ? "/" : undefined);
     const sessionId = trunc(body.sessionId, MAX_SESSION_ID)?.replace(/[^A-Za-z0-9_-]/g, "");
 
     // Drop malformed events and anything from the admin dashboard itself
@@ -146,11 +158,24 @@ export async function POST(request: NextRequest) {
       return Response.json({ ok: true });
     }
 
-    // Geo-pings: validate, then coarsen. Coordinates must be finite and
-    // within Kitsap-ish bounds or the event is dropped silently. Whatever
-    // precision the client sent, we round to 3 decimals (~100 m) and classify
-    // the named area server-side — nothing finer ever reaches the store.
-    let geoPing: Pick<AnalyticsEvent, "lat" | "lng" | "area"> | undefined;
+    // E11 privacy floor: events touching food/health-assistance resources are
+    // never persisted — not counted, not sampled, nothing. The client mirrors
+    // this check (tracker.tsx), but THIS drop is the guarantee.
+    if (isSensitivePath(path)) {
+      return Response.json({ ok: true });
+    }
+    const href = type === "outbound" ? trunc(body.href, MAX_HREF) : undefined;
+    if (href && isSensitiveOutbound(href)) {
+      return Response.json({ ok: true });
+    }
+
+    // Geo-pings: validate, then coarsen, then DISCARD. Coordinates must be
+    // finite and within Kitsap-ish bounds or the event is dropped silently.
+    // Whatever precision the client sent, we round to 3 decimals and classify
+    // the named area server-side — then only the AREA BUCKET is stored; the
+    // rounded coordinates exist transiently in this block and nowhere else
+    // (E11: no lat/lng key ever reaches the store).
+    let geoPing: Pick<AnalyticsEvent, "area"> | undefined;
     if (type === "geo-ping") {
       const lat = typeof body.lat === "number" ? body.lat : Number(body.lat);
       const lng = typeof body.lng === "number" ? body.lng : Number(body.lng);
@@ -164,9 +189,7 @@ export async function POST(request: NextRequest) {
       ) {
         return Response.json({ ok: true });
       }
-      const coarseLat = roundCoord(lat);
-      const coarseLng = roundCoord(lng);
-      geoPing = { lat: coarseLat, lng: coarseLng, area: classifyArea(coarseLat, coarseLng) };
+      geoPing = { area: classifyArea(roundCoord(lat), roundCoord(lng)) };
     }
 
     const event: AnalyticsEvent = {
@@ -175,8 +198,9 @@ export async function POST(request: NextRequest) {
       path,
       sessionId,
       geo: deriveGeo(request),
-      ...(type === "outbound"
-        ? { href: trunc(body.href, MAX_HREF), label: trunc(body.label, MAX_LABEL) }
+      ...(type === "outbound" ? { href, label: trunc(body.label, MAX_LABEL) } : {}),
+      ...(type === "consent"
+        ? { noticeVersion: trunc(body.noticeVersion, MAX_NOTICE_VERSION) }
         : {}),
       ...(geoPing ?? {}),
     };

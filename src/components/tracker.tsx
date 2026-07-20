@@ -17,6 +17,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { isSensitiveOutbound } from "@/lib/privacy/policy";
 
 const SESSION_KEY = "vk-sid";
 
@@ -45,7 +46,12 @@ function getSessionId(): string {
   }
 }
 
-function send(payload: Record<string, unknown>) {
+/**
+ * Fire-and-forget beacon to /api/track. Exported (E11) so the consent
+ * surfaces can send their one "consent" event through the SAME path —
+ * sendBeacon-with-fetch-fallback — instead of growing a second fetch idiom.
+ */
+export function send(payload: Record<string, unknown>) {
   const body = JSON.stringify(payload);
   try {
     // sendBeacon queues the request even if the page unloads (outbound taps!).
@@ -65,11 +71,19 @@ function send(payload: Record<string, unknown>) {
   });
 }
 
+/** Session id accessor for the consent surfaces (E11). */
+export function trackingSessionId(): string {
+  return getSessionId();
+}
+
 /** Record a tap on an outbound link (menu, ordering, map, booking, ...). */
 export function trackOutbound(href: string, label: string) {
   if (typeof window === "undefined") return;
   const path = window.location.pathname;
   if (path.startsWith("/admin")) return;
+  // E11: food/health-assistance destinations are never tracked. The server
+  // drops these too (the guarantee); skipping here avoids even the request.
+  if (isSensitiveOutbound(href)) return;
   send({ type: "outbound", path, sessionId: getSessionId(), href, label });
 }
 

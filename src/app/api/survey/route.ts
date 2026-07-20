@@ -5,6 +5,10 @@ import type { SurveyResponse } from "@/lib/types";
 
 const DISTANCE_BANDS = ["local", "10-50mi", "50mi-plus", "out-of-state", "international"];
 
+// E11 (precondition-2 gap closed): cap the raw body before parsing — field
+// truncation below only bounds what we keep, not what we buffer.
+const MAX_BODY_BYTES = 8_192;
+
 export async function POST(request: NextRequest) {
   const limit = await checkRateLimit(clientKey(request, "survey"), {
     limit: 5,
@@ -19,7 +23,11 @@ export async function POST(request: NextRequest) {
 
   let body: Partial<SurveyResponse>;
   try {
-    body = await request.json();
+    const raw = await request.text();
+    if (raw.length > MAX_BODY_BYTES) {
+      return Response.json({ error: "body too large" }, { status: 413 });
+    }
+    body = JSON.parse(raw);
   } catch {
     return Response.json({ error: "invalid JSON" }, { status: 400 });
   }
@@ -28,12 +36,12 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "distanceBand required" }, { status: 400 });
   }
 
+  // E11: the dead zip/state fields are gone — the survey UI never asked for
+  // them (audit-confirmed dead PII surface); the route no longer accepts them.
   const response: SurveyResponse = {
     submittedAt: new Date().toISOString(),
     distanceBand: body.distanceBand,
     overnight: Boolean(body.overnight),
-    homeZip: typeof body.homeZip === "string" ? body.homeZip.slice(0, 5) : undefined,
-    homeState: typeof body.homeState === "string" ? body.homeState.slice(0, 20) : undefined,
     lodgingNights:
       typeof body.lodgingNights === "number" && body.lodgingNights >= 0
         ? Math.min(body.lodgingNights, 60)

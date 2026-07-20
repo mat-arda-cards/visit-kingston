@@ -6,15 +6,19 @@
 // rows); revisit with incremental aggregation if volume ever grows.
 //
 // What we store, and only this: a timestamp, a pageview/outbound-click/
-// geo-ping type, the in-app path, a random client-generated session id
-// (sessionStorage, no cookies), coarse geography derived server-side from
-// connection headers, for outbound clicks the destination href + label, and
-// for opt-in geo-pings (the "what's open near me" feature) coordinates
-// rounded to 3 decimals (~100 m / about a block) plus a named-area bucket.
-// No PII, no IP addresses, no user agents, no cookies, no third parties.
-// Geo-pings only ever exist because the visitor tapped a location feature
-// and accepted the browser's permission prompt; nothing finer than the
-// rounded coordinates is ever stored, and reporting is by area counts.
+// geo-ping/consent type, the in-app path, a random client-generated session
+// id (sessionStorage, no cookies), coarse geography derived server-side from
+// connection headers, for outbound clicks the destination href + label, for
+// opt-in geo-pings (the "what's open near me" feature) a NAMED-AREA BUCKET
+// ONLY, and for consent grants the notice version consented to.
+// No PII, no IP addresses, no user agents, no cookies, no third parties —
+// and NO COORDINATES, ever (E11): the route inspects the visitor's rounded
+// position transiently to classify the area, then discards it. Geo-pings
+// only ever exist because the visitor tapped a location feature, granted the
+// in-app consent card, and accepted the browser's permission prompt.
+// Outbound taps to food/health-assistance destinations are never stored at
+// all (src/lib/privacy/policy.ts SENSITIVE_DESTINATIONS — dropped at the
+// ingest trust boundary, no count-only fallback).
 //
 // IMPORTANT: precise home zip codes canNOT be derived reliably from an IP —
 // IP geolocation is city/region-grained at best and often wrong at zip level.
@@ -39,7 +43,7 @@ export interface AnalyticsGeo {
 export interface AnalyticsEvent {
   /** ISO 8601 timestamp, set server-side. */
   ts: string;
-  type: "pageview" | "outbound" | "geo-ping";
+  type: "pageview" | "outbound" | "geo-ping" | "consent";
   /** In-app pathname, e.g. "/eat". */
   path: string;
   /** Random client-generated id (sessionStorage), rotates per browser session. */
@@ -49,12 +53,18 @@ export interface AnalyticsEvent {
   href?: string;
   /** Outbound only: human label, e.g. the link text or business name. */
   label?: string;
-  /** Geo-ping only: latitude rounded to 3 decimals (~100 m). Never finer. */
-  lat?: number;
-  /** Geo-ping only: longitude rounded to 3 decimals (~100 m). Never finer. */
-  lng?: number;
-  /** Geo-ping only: named Kingston area, classified server-side (see AREAS). */
+  /**
+   * Geo-ping only: named Kingston area, classified server-side (see AREAS).
+   * The ONLY location field — coordinates are inspected transiently at the
+   * route and never stored (E11 privacy floor; the ingest test suite is the
+   * permanent regression net).
+   */
   area?: string;
+  /**
+   * Consent only: the PRIVACY_NOTICE_VERSION the visitor granted. Proves in
+   * aggregate that the consent surface was live and used — never a location.
+   */
+  noticeVersion?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,6 +176,8 @@ export interface AnalyticsSummary {
   outboundClicks: number;
   /** Opt-in "near me" location pings — a sample, never a census. */
   geoPings: number;
+  /** Geo-consent grants recorded (E11) — the consent surface's audit story. */
+  consents: number;
   uniqueSessions: number;
   /** Sorted by count, descending. */
   pageviewsByPath: { path: string; count: number }[];
@@ -219,6 +231,7 @@ export async function summarize(): Promise<AnalyticsSummary> {
   let pageviews = 0;
   let outboundClicks = 0;
   let geoPings = 0;
+  let consents = 0;
 
   for (const e of events) {
     sessions.add(e.sessionId);
@@ -238,6 +251,8 @@ export async function summarize(): Promise<AnalyticsSummary> {
       geoPings++;
       const area = e.area ?? OUTSIDE_AREA;
       byArea.set(area, (byArea.get(area) ?? 0) + 1);
+    } else if (e.type === "consent") {
+      consents++;
     }
 
     const geo = e.geo ?? { source: "unknown" as const };
@@ -268,6 +283,7 @@ export async function summarize(): Promise<AnalyticsSummary> {
     pageviews,
     outboundClicks,
     geoPings,
+    consents,
     uniqueSessions: sessions.size,
     pageviewsByPath: [...byPath.entries()]
       .map(([p, count]) => ({ path: p, count }))
