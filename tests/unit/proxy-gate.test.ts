@@ -23,6 +23,7 @@ function passed(res: Response): boolean {
 
 afterEach(() => {
   delete process.env.WORKLIST_SWEEP_TOKEN;
+  delete process.env.BACKUP_TOKEN;
 });
 
 describe("proxy sweep-token carve-out", () => {
@@ -54,5 +55,19 @@ describe("proxy sweep-token carve-out", () => {
       const res = proxy(req(path, { authorization: "Bearer sweep-secret" }));
       expect(res.status, path).toBe(401);
     }
+  });
+
+  it("/api/admin/backup: the E03 BACKUP_TOKEN path works through the boundary (nightly-backup regression)", () => {
+    const url = "http://localhost/api/admin/backup";
+    // Fail-closed with env unset, wrong token 401s…
+    expect(proxy(req(url, { authorization: "Bearer backup-secret" })).status).toBe(401);
+    process.env.BACKUP_TOKEN = "backup-secret";
+    expect(proxy(req(url, { authorization: "Bearer nope" })).status).toBe(401);
+    // …right token passes, and each token opens ONLY its own route.
+    expect(passed(proxy(req(url, { authorization: "Bearer backup-secret" })))).toBe(true);
+    expect(
+      proxy(req("http://localhost/api/admin/worklist/sweep", { authorization: "Bearer backup-secret" }))
+        .status,
+    ).toBe(401);
   });
 });
