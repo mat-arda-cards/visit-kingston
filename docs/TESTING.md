@@ -39,10 +39,13 @@ is missing, and with a setup hint if `TEST_DATABASE_URL` is unset (E05: structur
 data lives in Postgres, so the spawned server needs a THROWAWAY database — locally:
 `docker run -e POSTGRES_PASSWORD=ci -p 5432:5432 postgres:16`, then
 `TEST_DATABASE_URL=postgres://postgres:ci@127.0.0.1:5432/postgres npm run test:server`).
-The setup migrates the schema, wipes `record`/`audit`/`quarantine`, seeds a scratch
-admin (into the DB and the temp `DATA_DIR`), and still strips `UPSTASH_*`; the
-parent shell's `DATABASE_URL` is deliberately ignored — only the explicit test var
-is used, so the suite can never point at real Neon/Redis.
+The setup migrates the schema, truncates
+`record`/`audit`/`quarantine`/`users`/`invites`/`orgs`, seeds a scratch admin into
+the `users` table (E06: auth is Postgres-only — nothing is written to the temp
+`DATA_DIR`, which now backs only photos and the health route's write probe), and
+still strips `UPSTASH_*`; the parent shell's `DATABASE_URL` is deliberately ignored
+— only the explicit test var is used, so the suite can never point at real
+Neon/Redis.
 
 ## The route-gating walk (`tests/server/admin-walk.test.ts`)
 
@@ -119,8 +122,10 @@ verify each is genuinely unrendered before adding it.
 
 The `ci` check is required on `main` — this is what actually gates the live site,
 since Render deploys on push and does not wait for GitHub checks. Recipe (repo is
-resolved dynamically because the remote is migrating in E03 — **never hardcode the
-owner/repo**):
+resolved dynamically so the recipe survives a transfer — the remote moved to
+`matthager12-collab/ExploreKingstonChamberApp` in E03, and the old
+`mat-arda-cards/visit-kingston` path resolves only via GitHub's transfer redirect
+— **never hardcode the owner/repo**):
 
 ```bash
 gh api -X PUT "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/branches/main/protection" --input - <<'JSON'
@@ -136,4 +141,8 @@ JSON
 ```
 
 `enforce_admins:false` and no required reviews are the solo-operator defaults.
-**E03 must re-apply this recipe on the migrated repo** after the remote moves.
+The remote moved in E03 to `matthager12-collab/ExploreKingstonChamberApp`. If the
+transfer did not carry protection over, **re-apply this recipe against that repo** —
+check first with `gh api repos/matthager12-collab/ExploreKingstonChamberApp/branches/main/protection`
+using a token that has admin on the repo (a token scoped to the old
+`mat-arda-cards` path returns 404 here and proves nothing).

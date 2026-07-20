@@ -128,7 +128,7 @@ domain layer (src/lib/)
    adapters        wsf, kitsap, weather, tides (+ time/hours engines)
    engines         ferry-status, ferry-forecast, ferry-line, ferry-reminder,
                    side/side-server, page-visibility, copy-context, map/resolve
-   auth.ts         users, invites, sessions, canEdit
+   auth/           users, orgs, invites, sessions, can() over 5 roles (E06)
    ▼
 persistence substrate   db/records.ts (audited zod write choke) | data-dir.ts | blob-store.ts | rate-limit.ts
    ├─ POSTGRES (required)  Neon: record + audit + quarantine + append tables
@@ -190,15 +190,21 @@ All are seed+overlay via `json-store.ts` unless marked append.
 | `ferry-observations` | **append** (`ferry_observation` table) | sailing-space snapshots for the forecast |
 | `analytics-store` | **append** (`analytics_event` table) | 3 event types |
 | `survey-store` | **append** (`survey_response` table) | LTAC/JLARC responses |
-| `auth` (`auth.ts`) | users + invites | `record` rows, stores `auth-users` / `auth-invites` |
+| `auth` (`src/lib/auth/` + `db/auth-store.ts`) | users + orgs + invites | **not** the `record` table — dedicated `users` / `orgs` / `invites` tables since E06 |
 
 ### 4.3 The Postgres substrate (the headline fact — E05)
 Structured data no longer branches on env: it lives in Neon Postgres,
 **every write goes through the audited zod choke point**
 `src/lib/db/records.ts` (`readRecords` / `readMergedRecords` / `writeRecord`),
 and `DATABASE_URL` is required — `/api/health` reports `dbOk:false` and 503s
-without it, so deploys fail closed. The env-detected seams that remain cover
-only images and rate limiting:
+without it, so a release without `DATABASE_URL` never serves traffic. That is
+**not** a safe abort: both Render services mount a persistent disk, only one
+instance can hold it, so Render stops the old instance *before* starting the
+new one. A release that never goes healthy therefore leaves the site down (502)
+until a good release lands — the previous release is already gone and does not
+resume. See [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) § "Migrations under
+auto-deploy". The env-detected seams that remain cover only images and rate
+limiting:
 
 | Seam file | Detector | Disk host (Render) | Serverless (Vercel) |
 |-----------|----------|--------------------|---------------------|
@@ -212,7 +218,8 @@ generated into checked-in `db/migrations/` and applied at boot
 
 - `record(store, id, doc jsonb, deleted, status, source, external_id,
   owner_org_id, created/updated…)` — the generic table backing **every**
-  seed+overlay collection *and* auth (`store = 'auth-users' | 'auth-invites'`).
+  seed+overlay collection. Auth is **not** in this table: since E06 users, orgs
+  and invites have their own first-class tables (§5).
   `readRecords()` reconstructs the old file-shaped contract (re-attaches
   `_deleted` from the `deleted` column) so `readMerged()` behaves identically.
 - `audit` — append-only trail of every record write (a DB trigger rejects
@@ -241,7 +248,7 @@ dependency.
 
 ### 4.5 Identity
 Every record's id is a human-readable slug; overlays and cross-references
-(events↔owners, needs↔charities, accounts↔`linkedIds`, features↔views) join on
+(events↔owners, needs↔charities, orgs↔`org.linked_ids`, features↔views) join on
 it. The `record` table's `(store, id)` primary key mirrors the old file model
 exactly.
 
@@ -249,17 +256,27 @@ exactly.
 
 ## 5. Auth architecture
 
-Invite-only, three roles (`business`, `nonprofit`, `admin`), **no visitor
-accounts**. scrypt password hashes; stateless HMAC-signed session cookies
+Invite-only, five roles (`admin`, `moderator`, `org-editor`, `member-business`,
+`viewer`) over an **org** entity, **no visitor accounts**. scrypt password
+hashes; stateless HMAC-signed session cookies
 (`vk-session`, 30 days, signed with `AUTH_SECRET`); a first-run bootstrap page
 (`/portal/setup` → `/api/auth/setup`) that self-destructs once any user exists;
-`src/app/admin/layout.tsx` gates all of `/admin` (with a pre-setup grace);
-every write handler re-validates the session + `canEdit(user, recordId)` —
-defense in depth, never trusting the UI.
+`src/proxy.ts` (the Next 16 file convention — **not** `middleware.ts`) turns
+unauthenticated requests away at the request boundary, and
+`src/app/admin/layout.tsx` gates all of `/admin` behind role `admin` — there is
+**no pre-setup grace** (E06 removed it): `/admin` always redirects to `/portal`,
+even on a fresh install with zero users, so it is never world-readable.
+Bootstrap runs through `/portal` → `/portal/setup` instead. Every write handler
+re-validates the session + `can(user, action, resource)` — defense in depth,
+never trusting the UI.
 
-Storage lives in Postgres with everything else (E05): users and invites are
-`record` rows under the stores `auth-users` / `auth-invites` (invites keyed by
-their code); the old `DATA_DIR/auth/*.json` files are gone. The former v1
+Storage lives in Postgres with everything else: since E06, users, orgs and
+invites have their own first-class tables (`users` / `orgs` / `invites` — see
+`src/lib/db/auth-schema.ts` and `src/lib/db/auth-store.ts`), invites keyed by
+their code. `linked_ids` lives on the **org**, not the user, so permission
+follows the organization rather than the account. Both the E05-era
+`auth-users` / `auth-invites` `record` stores and the older
+`DATA_DIR/auth/*.json` files are gone. The former v1
 limits are **now addressed**: login / setup / redeem are rate-limited
 (`rate-limit.ts`, per-IP + per-account buckets), `/portal/account` gives
 self-service name/email/password changes (`/api/auth/account`, `/api/auth/password`),
@@ -403,7 +420,7 @@ between them.
 | Mode | **Postgres + disk (E05)** — `DATABASE_URL` (Neon) for structured data, `DATA_DIR=/data` for images/photos | **Cloud** — Neon + Blob + Upstash; `DATA_DIR` unset |
 | Rate limit | in-process Map (one instance — correct) | Upstash Redis (shared) |
 | Images | under `/data`, served by app routes | Vercel Blob CDN URLs |
-| Health | `/api/health` → `{ok, dataDir, dataWritable, dbOk}`; **503 until the volume is writable AND Postgres answers** (E05) — a release booted without `DATABASE_URL` never goes live | `/api/health` (same dual probe) |
+| Health | `/api/health` → `{ok, dataDir, dataWritable, dbOk}`; **503 until the volume is writable AND Postgres answers** (E05). The service mounts a persistent disk, so Render **stops the old instance before starting the new one**: a release that never goes healthy leaves the site **down**, it does not fall back to the previous release. Every deploy is a ~15 s full outage for the same reason — see [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) | `/api/health` (same dual probe) |
 | Secrets | `AUTH_SECRET` (Render-generated, stable), `SETUP_TOKEN` (Render-generated, first-run bootstrap only), `WSDOT_API_KEY`, `NEXT_PUBLIC_SITE_URL` (**build-time**, baked into the client bundle), `DATABASE_URL` (Neon pooled url — E05) set in dashboard | + `BLOB_READ_WRITE_TOKEN`, `UPSTASH_REDIS_REST_URL/TOKEN` |
 
 Environment variables (authoritative — `.env.production.example`, `render.yaml`,
@@ -411,7 +428,7 @@ Environment variables (authoritative — `.env.production.example`, `render.yaml
 
 | Var | Required? | Effect |
 |-----|-----------|--------|
-| `AUTH_SECRET` | **yes** | signs HMAC session cookies (`auth.ts`) |
+| `AUTH_SECRET` | **yes** | signs HMAC session cookies (`src/lib/auth/session.ts`) |
 | `WSDOT_API_KEY` | optional | live ferry data; absent → bundled fallback schedule |
 | `NEXT_PUBLIC_SITE_URL` | **required in production**, **build-time** | absolute origin for share-card/canonical URLs (`layout.tsx` `metadataBase`); inlined at `npm run build`, not read at runtime |
 | `SETUP_TOKEN` | optional (first-run bootstrap only) | gates `POST /api/auth/setup` fail-closed; never consulted once an admin exists |
@@ -465,8 +482,12 @@ legacy data-move script and `db.ts` / `ensureSchema()` are gone.
   substitute small vessel. It ships dark behind the admin flag for this reason;
   don't trust it in front of visitors until the accuracy backtest earns it.
 - **Migrations run at boot** (`src/instrumentation.ts`) — a release with a bad
-  or missing migration fails its health check instead of serving. (The legacy
-  lazy `ensureSchema()` path was removed by E05.)
+  or missing migration fails its health check and, because the persistent disk
+  forces stop-before-start, takes the whole service down until a good release
+  deploys; it does **not** roll back to the previous release. `main`
+  auto-deploys on every merge, so this is one merge away at all times — see
+  [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) § "Migrations under auto-deploy".
+  (The legacy lazy `ensureSchema()` path was removed by E05.)
 - **Seasonal data rots on a schedule** (GTFS, WSF fares ~Oct, hours quarterly) —
   mitigated by the OPERATIONS.md calendar, not by code.
 - **Parking polygon geometry** is schematic-georeferenced (±10 m) pending the

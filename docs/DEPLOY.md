@@ -53,7 +53,7 @@ different `DATA_DIR`.
 
 | Data | Home (every deploy) | Phase-2 delta |
 |---|---|---|
-| auth users + invites | `record` rows, `store='auth-users'` / `'auth-invites'` | — |
+| auth users, orgs + invites | dedicated `users` / `orgs` / `invites` tables (E06 — no longer `record` rows under `store='auth-users'`) | — |
 | portal overlays (restaurants, events, charities, needs, lodging, webcams, parking zones, itineraries, ferry-info, boarding-pass, ferry-prediction, site copy/pages, map views/features) | `record` rows keyed `(store, id)`, `deleted` column carries `_deleted` tombstones | — |
 | custom hunts + submissions | `record` (`custom-hunts`, `hunt-submissions`) | — |
 | hunt reference/player photos, map-feature images | files under `DATA_DIR` (until E15) | **Vercel Blob** (public URL stored on the record) |
@@ -130,11 +130,25 @@ Blueprint that declares the Docker web service, a **1 GB Disk mounted at
      mounts a persistent disk, which only one instance can mount at a time, so
      Render stops the old instance before starting the new one — an unhealthy
      release means the service is DOWN, not held back. (Verified on staging
-     2026-07-19.) Validate the URL from your laptop first:
+     2026-07-19.) Validate the URL from your laptop first — `psql` is **not**
+     installed on the operator Mac, so use the repo's own `pg` driver, run from
+     the repo root with the exact string you are about to paste on the
+     clipboard:
 
      ```bash
-     psql "<the URL you are about to paste>" -c "select 1"
+     node -e 'const {Client}=require("pg");
+     const u=require("child_process").execSync("pbpaste").toString().trim();
+     if(u.length===0){console.log("❌ clipboard is EMPTY");process.exit(1)}
+     new Client({connectionString:u}).connect().then(async function(){
+       const r=await this.query("select current_database() db, (select count(*) from record) records");
+       console.log("✅",r.rows[0]); await this.end();
+     }).catch(e=>console.log("❌ FAILS:",e.message));' 2>&1 | grep -v Warning
      ```
+
+     A truncated paste, a stale password, or the wrong Neon branch all surface
+     here, while the site is still up. The fuller three-line pre-flight (plus
+     the `psql` variant, if you happen to have it) is in
+     [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) under "PRE-FLIGHT".
    - `WORKLIST_SWEEP_TOKEN` — `sync: false` (E08); Bearer token that lets a
      scheduler call `POST /api/admin/worklist/sweep` (the staleness sweep)
      without an admin session. Optional and **fail-closed**: unset disables
@@ -344,9 +358,12 @@ Same bootstrap as local, now against the live volume/DB:
    from the Render dashboard (or the Fly secret you set) and paste it in; the
    endpoint 403s without it, so a stranger who finds the URL first can't take
    the site.
-2. **Mint invites** at `/admin/accounts`. Each code is tied to a role
-   (`business` / `nonprofit` / `admin`) and the listing/org ids it may edit
-   (`linkedIds`). Login/setup/redeem are rate-limited (`src/lib/rate-limit.ts`).
+2. **Mint invites** at `/admin/accounts`. Each code is tied to one of the five
+   roles (`admin` / `moderator` / `org-editor` / `member-business` / `viewer` —
+   defined once in `src/lib/auth/roles.ts`); the two org roles are tied to an
+   org, whose `linked_ids` scope which listings it may edit. (E06 moved
+   `linked_ids` off the user and onto the org.) Login/setup/redeem are
+   rate-limited (`src/lib/rate-limit.ts`).
 3. **Hand codes to businesses.** They redeem at `/portal/join`, then edit
    hours/listings/events/volunteer needs, which appear on public pages within
    ~60 s (ISR). Codes are delivered by hand for the first cohort (no email

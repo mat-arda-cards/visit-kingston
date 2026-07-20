@@ -290,8 +290,11 @@ production*, not a prototype.
   (file and `overlay` table) since the seam is the whole persistence contract.
 - **P1 — auth tests:** invite lifecycle (mint → redeem → reuse rejected),
   password verify, session token expiry/tamper, temp-password reset, and the
-  **`canEdit` matrix** (role × linkedIds — the entire portal authorization model
-  is that one function).
+  **authorization matrix** — since E06 that is `can(user, action, resource)`
+  (which replaced `canEdit(user, id)`), exercised across all five roles (admin,
+  moderator, org-editor, member-business, viewer) × `org.linked_ids` (the
+  linkage moved off the user and onto the org). The entire portal authorization
+  model is that one function.
 - **P1 — ICS output tests:** validate `/api/feeds/events?format=ics` and
   `/api/ferry/reminder` against an RFC 5545 parser; calendar subscribers are
   silent failers.
@@ -334,11 +337,16 @@ The migration is done; the operational disciplines around it are not.
   (7-day) and the off-site `/api/admin/backup` bundle both exist; restore via
   `scripts/restore-backup.mjs` has not been exercised end-to-end. Do it once and
   document the runbook in [OPERATIONS.md](OPERATIONS.md).
-- **P1 — decide the Neon vs. disk story deliberately.** Phase 1 runs
-  filesystem-mode on Render's `/data`; Phase 2 (Neon/Blob/Upstash on Vercel)
-  works but is unused. Pick the long-term home before the custom domain launch
-  ([DEPLOY.md](DEPLOY.md)), so backups and the audit log ([§7](#7-content-v2))
-  target the right backend.
+- **Done (E05) — the Neon vs. disk question is settled for structured data.**
+  Production cut over to Neon Postgres and `DATABASE_URL` is set; Postgres is now
+  required rather than one half of an env branch (`src/lib/db.ts` and the branch
+  are gone), and `/api/health` gates on `dbOk`. Render's `/data` disk keeps only
+  images and hunt photos. Noted here, not only in [§0](#0-shipped-since-v1),
+  because it closes this section's open question.
+- **P2 — decide whether images and the shared rate-limit seam follow.** Blob and
+  Upstash remain optional, so the disk is still load-bearing for uploads. Pick
+  their long-term home before the custom domain launch ([DEPLOY.md](DEPLOY.md)),
+  so backups and the audit log ([§7](#7-content-v2)) target the right backend.
 
 ## 11. If rebuilding from scratch
 

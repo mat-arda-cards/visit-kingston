@@ -61,7 +61,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # server.js reads these to bind the listener (verified in Next 16.2.10 docs).
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-# All mutable runtime state resolves through src/lib/data-dir.ts -> DATA_DIR.
+# FILESYSTEM runtime state (images, hunt photos) resolves through
+# src/lib/data-dir.ts -> DATA_DIR. Since E05 the structured state — records,
+# users/orgs/invites, analytics, ferry observations — lives in Postgres via
+# DATABASE_URL and never touches this disk.
 # On the persistent host this MUST point at the mounted volume (see /data below).
 ENV DATA_DIR=/data
 
@@ -83,7 +86,7 @@ COPY --from=build --chown=nextjs:nodejs /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/db/migrations ./db/migrations
 
 # Create the mount point for the persistent volume and hand it to the app user
-# so the health probe's write test and all data writes succeed. On Render/Fly
+# so the health probe's write test and all disk-backed writes succeed. On Render/Fly
 # the disk is mounted here at runtime, shadowing this empty dir.
 RUN mkdir -p /data && chown nextjs:nodejs /data
 VOLUME ["/data"]
@@ -92,8 +95,15 @@ USER nextjs
 
 EXPOSE 3000
 
-# Liveness+readiness: GET /api/health returns 200 only when /data is writable,
-# 503 otherwise. wget ships in alpine's busybox (no curl needed). -q silent,
+# Liveness+readiness: GET /api/health returns 200 only when /data is writable
+# AND Postgres answers (dbOk); 503 otherwise. Since E05 the DB is a hard gate —
+# a release started without DATABASE_URL never reports healthy. That does NOT
+# fall back to the previous release: both Render services mount a persistent
+# disk, a disk can be mounted by only ONE instance, so Render stops the old
+# instance before starting the new one. An unhealthy release takes the service
+# DOWN (502), and every deploy is a ~15s outage. See docs/RUNBOOK-CUTOVER.md,
+# "Migrations under auto-deploy" and "Every deploy is a brief outage".
+# wget ships in alpine's busybox (no curl needed). -q silent,
 # -O- to stdout; non-zero exit on HTTP failure (via --spider-less body fetch).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
