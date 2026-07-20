@@ -39,10 +39,10 @@ export type WriteMeta = {
   status?: RecordStatus;
   ownerOrgId?: string;
   externalId?: string;
-  /** Audit-action override — importer only (its rows audit as 'import'
-   *  regardless of create/update). App writes leave this unset and get the
-   *  derived create/update/delete. */
-  action?: "create" | "update" | "delete" | "import";
+  /** Audit-action override — importer ('import') and the E09 restore route
+   *  ('restore', so the trail records the undo) only. App writes leave this
+   *  unset and get the derived create/update/delete. */
+  action?: "create" | "update" | "delete" | "import" | "restore";
 };
 
 /** Keys whose values never reach an audit row (auth-users password hashes;
