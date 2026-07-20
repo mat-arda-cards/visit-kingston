@@ -38,6 +38,21 @@ export default async function AdminMapPage() {
       >
         <MapZoneEditor initialZones={zones} />
       </Section>
+      {/* E09: the zone editor is a frozen monolith, so its change history
+          lives in the audit browser — pick a zone there to see and restore
+          old versions. */}
+      <Section>
+        <p className="text-sm text-ink-soft">
+          Made a change you regret?{" "}
+          <a
+            href="/admin/audit?store=parking-zones"
+            className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2 hover:text-sound"
+          >
+            View the parking zones&apos; change history
+          </a>{" "}
+          — every edit is recorded and any version can be restored.
+        </p>
+      </Section>
     </>
   );
 }

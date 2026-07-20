@@ -38,6 +38,25 @@ export default async function AdminMapsPage() {
           element of the builder, so give it the room a laptop screen has. */}
       <section className="mx-auto w-full max-w-[1500px] px-4 py-8">
         <MapBuilder initialViews={views} initialFeatures={features} />
+        {/* E09: the builder is a frozen monolith, so its change history lives
+            in the audit browser — one link per store it writes. */}
+        <p className="mt-4 text-sm text-ink-soft">
+          Made a change you regret? View the change history for{" "}
+          <a
+            href="/admin/audit?store=map-features"
+            className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2 hover:text-sound"
+          >
+            map features
+          </a>{" "}
+          or{" "}
+          <a
+            href="/admin/audit?store=map-views"
+            className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2 hover:text-sound"
+          >
+            map views
+          </a>{" "}
+          — every edit is recorded and any version can be restored.
+        </p>
       </section>
     </>
   );

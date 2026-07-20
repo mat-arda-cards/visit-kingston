@@ -111,6 +111,11 @@ export default async function PortalPage() {
         title: "Restaurants, lodging & webcams",
         blurb: "Edit Eat & Drink vendors — descriptions, show/hide, add new — plus lodging and webcams.",
       },
+      {
+        href: "/admin/audit",
+        title: "Change history",
+        blurb: "Every edit, who made it, and one-tap restore — nothing is ever lost.",
+      },
     );
   }
 

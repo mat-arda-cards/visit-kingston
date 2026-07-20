@@ -13,6 +13,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminHunt, HuntSubmission } from "@/lib/hunt-store"; // type-only: safe in a client file
 import { Badge, Card } from "@/components/ui";
+import { Provenance } from "@/components/admin/provenance";
+import { RecordHistory } from "@/components/admin/record-history";
 
 type SubmissionWithUrl = HuntSubmission & { photoUrl: string };
 
@@ -366,6 +368,14 @@ export function HuntEditor({
         </Card>
       ) : (
         <>
+          {/* E09: provenance + change history for the saved hunt. */}
+          {savedHuntId && (
+            <div className="space-y-2">
+              <Provenance store="custom-hunts" recordId={savedHuntId} />
+              <RecordHistory store="custom-hunts" recordId={savedHuntId} />
+            </div>
+          )}
+
           {/* Hunt fields */}
           <Card>
             <div className="grid gap-4 sm:grid-cols-2">

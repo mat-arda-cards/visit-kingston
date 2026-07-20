@@ -14,6 +14,8 @@
 import { useMemo, useState } from "react";
 import type { CopyBlock } from "@/lib/site-copy-registry";
 import { Badge, Card, Section } from "@/components/ui";
+import { Provenance } from "@/components/admin/provenance";
+import { RecordHistory } from "@/components/admin/record-history";
 
 const inputClass =
   "mt-1 block w-full rounded-lg border border-sand bg-white px-3 py-2 text-base";
@@ -369,6 +371,16 @@ function CopySection({
                               Reset to default
                             </button>
                           )}
+                        </div>
+                        {/* E09: who edited this block + restorable history.
+                            Provenance only for overridden blocks (default
+                            blocks have no overlay row to describe); the
+                            history panel fetches nothing until opened. */}
+                        <div className="mt-2 space-y-2">
+                          {overridden && (
+                            <Provenance store="site-copy" recordId={b.key} />
+                          )}
+                          <RecordHistory store="site-copy" recordId={b.key} />
                         </div>
                       </div>
                     );
