@@ -19,6 +19,8 @@ import type {
   Source,
 } from "@/lib/data/ferry-info";
 import { Badge, Card } from "@/components/ui";
+import { Provenance } from "@/components/admin/provenance";
+import { RecordHistory } from "@/components/admin/record-history";
 
 /* --------------------------------- styles --------------------------------- */
 
@@ -489,6 +491,31 @@ export function FerryInfoEditor({ initial }: { initial: FerryInfo }) {
           onSave={() => commit("sources", sources)}
           onReset={() => reset("sources")}
         />
+      </Card>
+
+      {/* E09: each ferry-info card is a fixed record — its provenance and
+          change history mount here rather than per-card, keeping the editing
+          cards uncluttered. */}
+      <Card>
+        <p className="font-display text-lg font-semibold text-sound-deep">
+          Change history
+        </p>
+        <div className="mt-3 space-y-4">
+          {(
+            [
+              ["payment", "Payment"],
+              ["boarding-pass", "Boarding pass"],
+              ["cash-tips", "Cash & tips"],
+              ["sources", "Sources"],
+            ] as const
+          ).map(([id, label]) => (
+            <div key={id} className="space-y-2">
+              <p className="text-sm font-medium text-ink">{label}</p>
+              <Provenance store="ferry-info" recordId={id} />
+              <RecordHistory store="ferry-info" recordId={id} />
+            </div>
+          ))}
+        </div>
       </Card>
 
       <p className="text-sm text-ink-soft">Public pages update within a minute.</p>

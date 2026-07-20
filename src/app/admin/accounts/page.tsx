@@ -69,6 +69,22 @@ export default async function AccountsPage() {
         restaurants={restaurants.map((r) => ({ id: r.id, name: r.name }))}
         charities={charities.map((c) => ({ id: c.id, name: c.name }))}
       />
+      {/* E09: account history is metadata-only (who/what/when — bodies are
+          stripped server-side for these stores) and restore is structurally
+          disabled; the audit browser is the right surface for it. */}
+      <section className="mx-auto max-w-5xl px-4 pb-8">
+        <p className="text-sm text-ink-soft">
+          Need to know who changed an account or invite?{" "}
+          <a
+            href="/admin/audit?store=users"
+            className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2 hover:text-sound"
+          >
+            View the account change history
+          </a>{" "}
+          — actions only, details stay hidden for security, and accounts can
+          never be &quot;restored&quot;.
+        </p>
+      </section>
     </>
   );
 }

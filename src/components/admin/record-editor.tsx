@@ -17,6 +17,8 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { DomainDef, FieldDef, GenericRecord } from "@/lib/schemas/form";
 import { Badge, Card } from "@/components/ui";
+import { Provenance } from "@/components/admin/provenance";
+import { RecordHistory } from "@/components/admin/record-history";
 
 const INPUT =
   "w-full rounded-lg border border-sand bg-white px-3 py-2 text-sm text-ink focus:border-tide focus:outline-none";
@@ -392,6 +394,18 @@ export function RecordEditor({
             )}
           </p>
 
+          {/* E09: where this record came from + who touched it last. Keyed
+              so switching records remounts (see record-history.tsx). */}
+          {!draft.isNew && (
+            <div className="mt-2">
+              <Provenance
+                key={`${domain.key}:${draft.id}`}
+                store={domain.key}
+                recordId={draft.id}
+              />
+            </div>
+          )}
+
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <Field
               label="Id"
@@ -463,6 +477,17 @@ export function RecordEditor({
               </p>
             )}
           </div>
+
+          {/* E09: fearless undo — every change to this record, restorable. */}
+          {!draft.isNew && (
+            <div className="mt-4">
+              <RecordHistory
+                key={`${domain.key}:${draft.id}`}
+                store={domain.key}
+                recordId={draft.id}
+              />
+            </div>
+          )}
         </Card>
       )}
 

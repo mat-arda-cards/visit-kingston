@@ -16,6 +16,8 @@ import { useRouter } from "next/navigation";
 import type { Itinerary } from "@/lib/types";
 import { SLUG_RE, firstZodMessage, itinerarySchema } from "@/lib/schemas";
 import { Badge, Card } from "@/components/ui";
+import { Provenance } from "@/components/admin/provenance";
+import { RecordHistory } from "@/components/admin/record-history";
 
 const INPUT =
   "w-full rounded-lg border border-sand bg-white px-3 py-2 text-sm text-ink focus:border-tide focus:outline-none";
@@ -306,6 +308,23 @@ export function ItineraryEditor({
         </Card>
       ) : (
         <>
+          {/* E09: provenance + change history for the saved itinerary. Keyed
+              so switching itineraries remounts (see record-history.tsx). */}
+          {!draft.isNew && (
+            <div className="space-y-2">
+              <Provenance
+                key={`p:${draft.id}`}
+                store="itineraries"
+                recordId={draft.id}
+              />
+              <RecordHistory
+                key={`h:${draft.id}`}
+                store="itineraries"
+                recordId={draft.id}
+              />
+            </div>
+          )}
+
           {/* Headline fields */}
           <Card>
             <div className="grid gap-4 sm:grid-cols-2">

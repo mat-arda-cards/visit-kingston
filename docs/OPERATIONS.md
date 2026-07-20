@@ -373,6 +373,7 @@ which redirects to `/portal/setup`. Editors write records into Postgres
 | `/admin/hunts` | Build/edit scavenger hunts; review player submissions |
 | `/admin/map` | Parking-zone **polygon editor** (MapZone, Geoman) |
 | `/admin/maps` | General map builder — named public views + drawable markers/lines/trails/areas + built-in data layers (output at `/map`) |
+| `/admin/audit` | **Change history** for everything (E09): who changed what, when, field-by-field — filterable, CSV-exportable, and the home of **restore** — see "History & restore" below |
 
 **Ferry prediction toggle** (`/admin/ferry-info` → `POST /api/admin/ferry-prediction {enabled:boolean}`): the busyness forecast (`/ferry/plan`, the "how busy today" panel on `/ferry`, the home callout) ships **dark**. The flag
 (the `ferry-prediction` record) defaults to **OFF**: the public sees nothing,
@@ -438,6 +439,63 @@ URL while signed in. Note: **seed records** (content that ships in git and
 has never been edited) carry no database row yet, so the sweep skips them
 until their first edit/verify overlays them — the §6 quarterly hand-check
 still owns those.
+
+### History & restore (E09)
+
+Nothing an admin does in the editors can be lost. Every save, delete, and
+import writes a snapshot to an **append-only** audit trail (Postgres rejects
+edits to it at the database level), and any full snapshot can be put back
+with one tap. So the promise to volunteers is: **edit freely — the worst
+mistake costs one restore, not an afternoon.**
+
+**Fix a bad edit (phone flow, ~15 s):** open the record in its editor → tap
+**View change history** → find the version from before the mistake → expand
+it to read the field-by-field diff → **Restore this version** → confirm.
+The confirm dialog says exactly what happens: the old version is saved as a
+**new** change — nothing is deleted, and you can undo the undo the same way.
+After a restore, reload the page to see the values back in the form; public
+pages update within a minute, like any edit.
+
+**Un-delete a listing:** deleted records keep their history. Open
+`/admin/audit`, filter to the content type, find the record, pin its history
+(or follow the editor's history link), and restore the last version from
+before the delete — the record comes back live exactly as it was.
+
+**Maps and parking zones:** those two editors are frozen high-risk files, so
+their history lives in the browser instead — use the "change history" links
+on `/admin/map` and `/admin/maps` (they open `/admin/audit` pre-filtered),
+pick the record, and restore from there. One caveat: restoring a map
+feature restores its **document** (shape, name, links) — an image file that
+was replaced separately is not part of the snapshot.
+
+**What can't be restored, on purpose:** accounts, invites, and orgs (their
+history shows who did what and when, but details are hidden and restore is
+disabled — an old account snapshot is a security lever, not content), and
+partial events like status changes or re-verify stamps (they aren't full
+versions of anything). Restored versions are re-validated against today's
+content rules first — a very old snapshot that no longer fits is refused
+with a field-by-field reason instead of being force-written, same rule as
+worklist approvals.
+
+**For the operator:** the trail is append-only and kept **at least 12
+months** (no pruning exists anywhere; deleting audit rows is a policy
+decision that would need its own epic). `/admin/audit` → **Download CSV**
+exports the current filter (up to 10,000 rows) with metadata columns only —
+`ts,actor,action,store,record_id,source`, never document bodies — safe to
+hand to the board or an auditor. Every restore is itself an audit row
+(`action: restore`, with the admin's email), so the trail records the undo.
+A restore keeps the record's current lifecycle status: restoring an old
+version of a **pending** submission does not publish it.
+
+**Deploy posture (staging-first):** the E09 branch deployed to staging via
+the `staging` branch, the full restore flow was rehearsed end-to-end
+against the production build + a real Postgres locally (login → edit →
+history → restore → verify → 409 on a stale pin → CSV), and Mat ran the
+hands-on restore on the staging host before the production merge.
+(Staging's admin accounts were reset and re-bootstrapped that day — the
+original E03-era staging login had been lost.)
+
+Restore rehearsed on staging: 2026-07-20
 
 ### Off-board a volunteer the same day (E06)
 

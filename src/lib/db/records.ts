@@ -39,10 +39,10 @@ export type WriteMeta = {
   status?: RecordStatus;
   ownerOrgId?: string;
   externalId?: string;
-  /** Audit-action override — importer only (its rows audit as 'import'
-   *  regardless of create/update). App writes leave this unset and get the
-   *  derived create/update/delete. */
-  action?: "create" | "update" | "delete" | "import";
+  /** Audit-action override — importer ('import') and the E09 restore route
+   *  ('restore', so the trail records the undo) only. App writes leave this
+   *  unset and get the derived create/update/delete. */
+  action?: "create" | "update" | "delete" | "import" | "restore";
 };
 
 /** Keys whose values never reach an audit row (auth-users password hashes;
@@ -168,7 +168,11 @@ export async function writeRecord<T extends WithId>(
 
     await tx.insert(audit).values({
       actor,
-      action: meta?.action ?? (_deleted ? "delete" : before ? "update" : "create"),
+      // Tombstones ALWAYS audit as 'delete', even under an action override —
+      // a tombstone write labeled 'import'/'restore' is indistinguishable
+      // from a live write in the trail (writeRecord strips `_deleted` from
+      // the audited doc), and E09's restore would replay it as an un-delete.
+      action: _deleted ? "delete" : (meta?.action ?? (before ? "update" : "create")),
       store,
       recordId: rec.id,
       before: before ? (redactSecrets(before.doc) as Record<string, unknown>) : null,
