@@ -256,6 +256,99 @@ export async function setRecordStatus(
   });
 }
 
+/** Mark a record human-verified now (E08 staleness engine): stamps
+ *  last_verified_at and audits it. Overlay rows only — a seed-only record
+ *  has no row to stamp and returns false (it joins the staleness engine the
+ *  first time any write overlays it; docs/OPERATIONS.md explains). */
+export async function markRecordVerified(
+  store: string,
+  id: string,
+  meta?: WriteMeta,
+): Promise<boolean> {
+  const db = getDb();
+  const actor = meta?.actor ?? "system";
+  const source = meta?.source ?? "admin";
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(record)
+      .where(and(eq(record.store, store), eq(record.id, id)))
+      .for("update");
+    if (!row || row.deleted) return false;
+    await tx
+      .update(record)
+      .set({ lastVerifiedAt: now })
+      .where(and(eq(record.store, store), eq(record.id, id)));
+    await tx.insert(audit).values({
+      actor,
+      action: "verify",
+      store,
+      recordId: id,
+      before: { lastVerifiedAt: row.lastVerifiedAt?.toISOString() ?? null },
+      after: { lastVerifiedAt: now.toISOString() },
+      source,
+    });
+    return true;
+  });
+}
+
+/** Live overlay rows past their verify-by date (E08 staleness sweep input).
+ *  Interval precedence: the row's own verify_interval_days, else the store's
+ *  entry in `defaults`. Clock anchor: last_verified_at, else updated_at (a
+ *  row that has never been verified counts from its last write). Only stores
+ *  named in `defaults` participate; seed-only records have no row and are
+ *  out of scope until something overlays them. */
+export async function listVerifyDue(
+  defaults: Record<string, number>,
+  now: Date = new Date(),
+): Promise<
+  {
+    store: string;
+    id: string;
+    doc: Record<string, unknown>;
+    lastVerifiedAt: Date | null;
+    intervalDays: number;
+  }[]
+> {
+  const stores = Object.keys(defaults);
+  if (!stores.length) return [];
+  const db = getDb();
+  const rows = await db
+    .select({
+      store: record.store,
+      id: record.id,
+      doc: record.doc,
+      lastVerifiedAt: record.lastVerifiedAt,
+      verifyIntervalDays: record.verifyIntervalDays,
+      updatedAt: record.updatedAt,
+    })
+    .from(record)
+    .where(
+      and(
+        inArray(record.store, stores),
+        eq(record.status, "live"),
+        eq(record.deleted, false),
+      ),
+    );
+  const due: Awaited<ReturnType<typeof listVerifyDue>> = [];
+  for (const r of rows) {
+    const intervalDays = r.verifyIntervalDays ?? defaults[r.store];
+    const anchor = r.lastVerifiedAt ?? r.updatedAt;
+    const dueAt = new Date(anchor.getTime() + intervalDays * 86_400_000);
+    if (dueAt <= now) {
+      due.push({
+        store: r.store,
+        id: r.id,
+        doc: r.doc,
+        lastVerifiedAt: r.lastVerifiedAt,
+        intervalDays,
+      });
+    }
+  }
+  return due;
+}
+
 /** Full rows (docs + governance metadata) — the read the backup/export
  *  serializer and the importer's diff pass need. One store, or every store
  *  when omitted. */

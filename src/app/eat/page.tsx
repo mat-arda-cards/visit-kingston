@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { OpenBadge, OrderTimingNote } from "@/components/open-badge";
 import { NearMe } from "@/components/near-me";
+import { ReportInaccurate } from "@/components/report-inaccurate";
 import { LocalBusinessJsonLd } from "@/components/json-ld";
 import { FeatureMap } from "@/components/feature-map";
 
@@ -129,6 +130,7 @@ function RestaurantCard({ r }: { r: Restaurant }) {
           <OrderTimingNote weeklyHours={r.weeklyHours} />
         )}
       </div>
+      <ReportInaccurate store="restaurants" id={r.id} subject={r.name} />
     </Card>
   );
 }

@@ -56,7 +56,9 @@ const ADMIN_GETTERS: Record<string, () => Promise<WithStatus<WithId>[]>> = {
   itineraries: getItinerariesAdmin,
 };
 
-async function getSubjectRecord(
+/** Any-status lookup of a content record by store name — the worklist's
+ *  subject resolver (report intake, takedown, the admin queue UI). */
+export async function getSubjectRecord(
   store: string,
   id: string,
 ): Promise<WithStatus<WithId> | undefined> {
@@ -64,6 +66,9 @@ async function getSubjectRecord(
   if (!getter) return undefined;
   return (await getter()).find((r) => r.id === id);
 }
+
+/** The stores getSubjectRecord can resolve (= the moderatable content set). */
+export const MODERATED_STORES: readonly string[] = Object.keys(ADMIN_GETTERS);
 
 async function findActiveModerationItem(
   store: string,
