@@ -394,10 +394,15 @@ export function RecordEditor({
             )}
           </p>
 
-          {/* E09: where this record came from + who touched it last. */}
+          {/* E09: where this record came from + who touched it last. Keyed
+              so switching records remounts (see record-history.tsx). */}
           {!draft.isNew && (
             <div className="mt-2">
-              <Provenance store={domain.key} recordId={draft.id} />
+              <Provenance
+                key={`${domain.key}:${draft.id}`}
+                store={domain.key}
+                recordId={draft.id}
+              />
             </div>
           )}
 
@@ -476,7 +481,11 @@ export function RecordEditor({
           {/* E09: fearless undo — every change to this record, restorable. */}
           {!draft.isNew && (
             <div className="mt-4">
-              <RecordHistory store={domain.key} recordId={draft.id} />
+              <RecordHistory
+                key={`${domain.key}:${draft.id}`}
+                store={domain.key}
+                recordId={draft.id}
+              />
             </div>
           )}
         </Card>

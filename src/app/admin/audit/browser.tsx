@@ -6,7 +6,7 @@
 // restore — that pinned view is the history surface for stores whose editors
 // are frozen monoliths (map builder, parking zones).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge, Card } from "@/components/ui";
@@ -42,6 +42,22 @@ function toParams(filters: BrowserFilters): URLSearchParams {
   return params;
 }
 
+/** API-call params: the date inputs give local calendar days, but the server
+ *  pins date-only values to UTC days — 7-8h off for Kingston admins. Only
+ *  the client knows the viewer's timezone, so convert here (form state and
+ *  the URL keep the raw YYYY-MM-DD for shareable deep links). new Date with
+ *  a time part and no Z parses as LOCAL time per ECMA-262. */
+function toApiParams(filters: BrowserFilters): URLSearchParams {
+  const params = toParams(filters);
+  if (filters.from && /^\d{4}-\d{2}-\d{2}$/.test(filters.from)) {
+    params.set("from", new Date(`${filters.from}T00:00:00`).toISOString());
+  }
+  if (filters.to && /^\d{4}-\d{2}-\d{2}$/.test(filters.to)) {
+    params.set("to", new Date(`${filters.to}T23:59:59.999`).toISOString());
+  }
+  return params;
+}
+
 export function AuditBrowser({
   stores,
   initialFilters,
@@ -59,29 +75,36 @@ export function AuditBrowser({
   const [notice, setNotice] = useState<string | null>(null);
 
   const pinned = Boolean(applied.store && applied.recordId);
+  // Request sequencing: a slow response for an older filter set (or an older
+  // cursor page) must never overwrite — or append onto — a newer one.
+  const seqRef = useRef(0);
 
   const load = useCallback(
     async (filters: BrowserFilters, cursor?: number) => {
+      const seq = ++seqRef.current;
       setLoading(true);
       setError(null);
       try {
-        const params = toParams(filters);
+        const params = toApiParams(filters);
         if (cursor !== undefined) params.set("cursor", String(cursor));
         const res = await fetch(`/api/admin/audit?${params.toString()}`);
+        if (seq !== seqRef.current) return; // superseded by a newer load
         if (!res.ok) {
           const data = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(data.error ?? `HTTP ${res.status}`);
         }
         const data = (await res.json()) as AuditPage;
+        if (seq !== seqRef.current) return;
         setPage((prev) =>
           cursor !== undefined && prev
             ? { ...data, entries: [...prev.entries, ...data.entries] }
             : data,
         );
       } catch (err) {
+        if (seq !== seqRef.current) return;
         setError(err instanceof Error ? err.message : "Couldn't load the trail");
       } finally {
-        setLoading(false);
+        if (seq === seqRef.current) setLoading(false);
       }
     },
     [],
@@ -103,7 +126,7 @@ export function AuditBrowser({
     setForm((f) => ({ ...f, [key]: value || undefined }));
 
   const csvHref = `/api/admin/audit?${(() => {
-    const params = toParams(applied);
+    const params = toApiParams(applied);
     params.set("format", "csv");
     return params.toString();
   })()}`;
@@ -224,6 +247,7 @@ export function AuditBrowser({
             <span className="font-mono">{applied.recordId}</span>
           </p>
           <Provenance
+            key={`${applied.store}:${applied.recordId}`}
             store={applied.store!}
             recordId={applied.recordId!}
             meta={page.recordMeta ?? null}

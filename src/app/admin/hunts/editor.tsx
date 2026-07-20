@@ -368,11 +368,20 @@ export function HuntEditor({
         </Card>
       ) : (
         <>
-          {/* E09: provenance + change history for the saved hunt. */}
+          {/* E09: provenance + change history for the saved hunt. Keyed so
+              switching hunts remounts (see record-history.tsx). */}
           {savedHuntId && (
             <div className="space-y-2">
-              <Provenance store="custom-hunts" recordId={savedHuntId} />
-              <RecordHistory store="custom-hunts" recordId={savedHuntId} />
+              <Provenance
+                key={`p:${savedHuntId}`}
+                store="custom-hunts"
+                recordId={savedHuntId}
+              />
+              <RecordHistory
+                key={`h:${savedHuntId}`}
+                store="custom-hunts"
+                recordId={savedHuntId}
+              />
             </div>
           )}
 

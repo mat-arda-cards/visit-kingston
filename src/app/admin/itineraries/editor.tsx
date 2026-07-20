@@ -308,11 +308,20 @@ export function ItineraryEditor({
         </Card>
       ) : (
         <>
-          {/* E09: provenance + change history for the saved itinerary. */}
+          {/* E09: provenance + change history for the saved itinerary. Keyed
+              so switching itineraries remounts (see record-history.tsx). */}
           {!draft.isNew && (
             <div className="space-y-2">
-              <Provenance store="itineraries" recordId={draft.id} />
-              <RecordHistory store="itineraries" recordId={draft.id} />
+              <Provenance
+                key={`p:${draft.id}`}
+                store="itineraries"
+                recordId={draft.id}
+              />
+              <RecordHistory
+                key={`h:${draft.id}`}
+                store="itineraries"
+                recordId={draft.id}
+              />
             </div>
           )}
 

@@ -182,7 +182,7 @@ describe("un-delete round-trip", () => {
     expect(restored!._deleted).toBeUndefined();
   });
 
-  it("a delete entry replays as a re-delete", async () => {
+  it("a delete entry replays as a re-delete, audited as 'delete', and the newest row replays as a re-delete too", async () => {
     const cam = validWebcam({ id: "rd-cam" });
     await writeRecord("webcams", cam, { actor: ADMIN.email, source: "admin" });
     await deleteRecord("webcams", "rd-cam", { actor: ADMIN.email, source: "admin" });
@@ -205,6 +205,59 @@ describe("un-delete round-trip", () => {
     expect(res.status).toBe(200);
     const rows = await readRecords<{ id: string; _deleted?: boolean }>("webcams");
     expect(rows.find((r) => r.id === "rd-cam")?._deleted).toBe(true);
+
+    // The re-delete's own audit row must be 'delete' (tombstone wins over the
+    // 'restore' action override) — otherwise restoring the newest entry later
+    // would silently republish a deliberately-deleted record.
+    const h3 = (await (await get("?store=webcams&recordId=rd-cam")).json()) as PageJson;
+    expect(h3.entries[0].action).toBe("delete");
+    const res2 = await postRestore({
+      store: "webcams",
+      recordId: "rd-cam",
+      auditId: h3.entries[0].id,
+      expectedUpdatedAt: h3.recordMeta!.updatedAt,
+    });
+    expect(res2.status).toBe(200);
+    const rows2 = await readRecords<{ id: string; _deleted?: boolean }>("webcams");
+    expect(rows2.find((r) => r.id === "rd-cam")?._deleted).toBe(true);
+  });
+
+  it("an importer tombstone write is audited as 'delete' even under the 'import' action override", async () => {
+    const cam = validWebcam({ id: "imp-cam" });
+    await writeRecord("webcams", cam, { actor: "import:data-dir", source: "import" });
+    await writeRecord(
+      "webcams",
+      { id: "imp-cam", _deleted: true },
+      { actor: "import:data-dir", source: "import", action: "import" },
+    );
+    const rows = await allAuditRows(tdb);
+    const tombstoneRow = rows.filter((r) => r.recordId === "imp-cam").pop()!;
+    expect(tombstoneRow.action).toBe("delete");
+  });
+
+  it("restore preserves the record's current lifecycle status (pending stays pending)", async () => {
+    const v1 = validRestaurant({ id: "pend-cafe", name: "Pending v1" });
+    await writeRecord("restaurants", v1, {
+      actor: "member@example.test",
+      source: "portal",
+      status: "pending",
+    });
+    await writeRecord(
+      "restaurants",
+      { ...v1, name: "Pending v2" },
+      { actor: "member@example.test", source: "portal", status: "pending" },
+    );
+    const history = (await (await get("?store=restaurants&recordId=pend-cafe")).json()) as PageJson;
+    expect(history.recordMeta?.status).toBe("pending");
+    const res = await postRestore({
+      store: "restaurants",
+      recordId: "pend-cafe",
+      auditId: history.entries.find((e) => e.action === "create")!.id,
+      expectedUpdatedAt: history.recordMeta!.updatedAt,
+    });
+    expect(res.status).toBe(200);
+    const after = (await res.json()) as { recordMeta: { status: string } };
+    expect(after.recordMeta.status).toBe("pending");
   });
 });
 
@@ -377,6 +430,27 @@ describe("redaction", () => {
       expect(entry.after).toBeNull();
       expect(entry.restorable).toBe(false);
     }
+  });
+
+  it("invite codes never leave the server, even as record ids", async () => {
+    // auth-store.ts keys invite audit rows by the CODE itself — a redeemable
+    // bearer credential. The read layer must digest it in JSON and CSV.
+    const code = "abcdef0123456789abcdef01";
+    await tdb.db.insert(audit).values({
+      actor: ADMIN.email,
+      action: "invite-mint",
+      store: "invites",
+      recordId: code,
+      before: null,
+      after: { code, role: "org-editor" },
+      source: "admin",
+    });
+    const jsonText = await (await get("?store=invites")).text();
+    expect(jsonText).not.toContain(code);
+    expect(jsonText).toContain("invite-"); // stable digest form
+    const csvText = await (await get("?store=invites&format=csv")).text();
+    expect(csvText).not.toContain(code);
+    expect(csvText).toContain("invite-");
   });
 
   it("denylisted keys are removed from non-auth stores too", async () => {

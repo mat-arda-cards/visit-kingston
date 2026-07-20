@@ -20,6 +20,8 @@
 
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import {
   type AuditFilters,
   type AuditRow,
@@ -90,6 +92,16 @@ export type AuditEntry = {
   metadataOnly: boolean;
 };
 
+/** Invite audit rows are keyed by the invite CODE itself (auth-store.ts
+ *  mirrors code → recordId), and an unredeemed code is a redeemable bearer
+ *  credential — so for invite stores the record id leaves the server only as
+ *  a stable one-way digest (rows of the same invite still correlate in the
+ *  browser and CSV; the raw code never rides an export). */
+function displayRecordId(store: string, recordId: string): string {
+  if (!INVITE_STORES.has(store)) return recordId;
+  return `invite-${createHash("sha256").update(recordId).digest("hex").slice(0, 12)}`;
+}
+
 export function redactAuditEntry(row: AuditRow): AuditEntry {
   const metadataOnly = isSensitiveStore(row.store);
   const denylist = INVITE_STORES.has(row.store)
@@ -105,7 +117,7 @@ export function redactAuditEntry(row: AuditRow): AuditEntry {
     actor: row.actor,
     action: row.action,
     store: row.store,
-    recordId: row.recordId,
+    recordId: displayRecordId(row.store, row.recordId),
     before: clean(row.before),
     after: clean(row.after),
     source: row.source,
@@ -181,13 +193,31 @@ export async function getRecordMetaView(
   return toMetaView(await getRecordMeta(store, recordId));
 }
 
-/** Export read (CSV): redacted like everything else — the CSV serializer
- *  additionally drops bodies entirely, but discipline starts here. */
+/** One export row as the CSV serializer consumes it — metadata only. */
+export type AuditExportEntry = {
+  ts: string;
+  actor: string;
+  action: string;
+  store: string;
+  recordId: string;
+  source: string;
+};
+
+/** Export read (CSV): the query is column-projected so no document body is
+ *  even fetched — nothing unfetched can leak. Invite record ids are digested
+ *  here exactly as in redactAuditEntry. */
 export async function listAuditForExport(
   filters: AuditFilters,
-): Promise<AuditEntry[]> {
+): Promise<AuditExportEntry[]> {
   const rows = await queryAuditForExport(filters);
-  return rows.map(redactAuditEntry);
+  return rows.map((r) => ({
+    ts: r.ts.toISOString(),
+    actor: r.actor,
+    action: r.action,
+    store: r.store,
+    recordId: displayRecordId(r.store, r.recordId),
+    source: r.source,
+  }));
 }
 
 /** Store names present in the trail — feeds the browser's dropdown so E05's

@@ -71,13 +71,30 @@ export async function queryAudit(
   };
 }
 
-/** Export read: same filters, hard-capped, newest first. */
+/** Export read: same filters, hard-capped, newest first — and PROJECTED to
+ *  the six metadata columns the CSV emits. Fetching before/after here would
+ *  parse up to 10k pairs of full jsonb documents only to discard them, and
+ *  not fetching them is also the structural guarantee that no body can ever
+ *  reach an export. */
+export type AuditExportRow = Pick<
+  AuditRow,
+  "id" | "ts" | "actor" | "action" | "store" | "recordId" | "source"
+>;
+
 export async function queryAuditForExport(
   filters: AuditFilters,
-): Promise<AuditRow[]> {
+): Promise<AuditExportRow[]> {
   const db = getDb();
   return db
-    .select()
+    .select({
+      id: audit.id,
+      ts: audit.ts,
+      actor: audit.actor,
+      action: audit.action,
+      store: audit.store,
+      recordId: audit.recordId,
+      source: audit.source,
+    })
     .from(audit)
     .where(whereFor(filters))
     .orderBy(desc(audit.id))
@@ -95,15 +112,24 @@ export async function getAuditRow(auditId: number): Promise<AuditRow | null> {
   return row ?? null;
 }
 
+// DISTINCT store is a whole-table scan (btree can't skip-scan here), and the
+// dropdown it feeds changes only when a brand-new store first writes — so the
+// result is memoized ~60s per process, same pattern as records.ts dbHealthy.
+let storesCache: { at: number; stores: string[] } | null = null;
+
 /** Store names that actually appear in the trail — feeds the browser's store
  *  dropdown so E05's store naming can never drift a hardcoded list. */
 export async function listAuditStores(): Promise<string[]> {
+  if (storesCache && Date.now() - storesCache.at < 60_000) {
+    return storesCache.stores;
+  }
   const db = getDb();
   const rows = await db
     .selectDistinct({ store: audit.store })
     .from(audit)
     .orderBy(audit.store);
-  return rows.map((r) => r.store);
+  storesCache = { at: Date.now(), stores: rows.map((r) => r.store) };
+  return storesCache.stores;
 }
 
 /** The provenance strip's record-level metadata (current overlay row, if

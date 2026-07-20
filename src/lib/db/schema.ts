@@ -121,9 +121,10 @@ export const audit = pgTable(
   },
   (t) => [
     // E09: the table grows forever (≥12-month retention floor), so the two
-    // read paths must be indexed — per-record history (store, record_id) and
-    // time-filtered global browsing (ts). Cursor paging rides the id PK.
-    index("audit_store_record_idx").on(t.store, t.recordId),
+    // read paths must be indexed — per-record history (store, record_id, id:
+    // the trailing id serves the ORDER BY id DESC page straight off the
+    // index) and time-filtered global browsing (ts). Cursor paging rides id.
+    index("audit_store_record_idx").on(t.store, t.recordId, t.id),
     index("audit_ts_idx").on(t.ts),
   ],
 );

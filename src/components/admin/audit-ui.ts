@@ -136,11 +136,21 @@ export async function postRestore(args: {
   auditId: number;
   expectedUpdatedAt: string | null;
 }): Promise<{ ok: true; recordMeta: RecordMetaView | null } | { ok: false; error: string }> {
-  const res = await fetch("/api/admin/audit/restore", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(args),
-  });
+  // Never reject: a network-level failure must resolve to the error variant,
+  // or the calling button's busy state sticks at "Restoring…" forever.
+  let res: Response;
+  try {
+    res = await fetch("/api/admin/audit/restore", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(args),
+    });
+  } catch {
+    return {
+      ok: false,
+      error: "Couldn't reach the server — check your connection and try again.",
+    };
+  }
   const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean;
     error?: string;

@@ -174,10 +174,19 @@ describe("apply, then a second apply (idempotence)", () => {
     expect(recordRows.some((r) => r.id === "no-name-cafe")).toBe(false);
   });
 
-  it("audits every write as action 'import' by actor 'import:data-dir'", async () => {
+  it("audits every write as 'import' by actor 'import:data-dir' — except tombstones, which always audit as 'delete'", async () => {
+    // E09: tombstone writes win over the action override. A tombstone audited
+    // as 'import' is indistinguishable from a live write in the trail
+    // (writeRecord strips `_deleted` from the audited doc), and the restore
+    // endpoint would replay it as an un-delete.
     const rows = await tdb.db.select().from(audit);
     expect(rows).toHaveLength(9);
-    expect(rows.every((r) => r.action === "import")).toBe(true);
+    const tombstones = rows.filter((r) => r.recordId === "closed-diner");
+    expect(tombstones).toHaveLength(1);
+    expect(tombstones[0].action).toBe("delete");
+    expect(
+      rows.filter((r) => r.recordId !== "closed-diner").every((r) => r.action === "import"),
+    ).toBe(true);
     expect(rows.every((r) => r.actor === "import:data-dir")).toBe(true);
     expect(rows.every((r) => r.source === "import")).toBe(true);
   });
