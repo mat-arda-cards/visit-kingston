@@ -17,6 +17,7 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -29,6 +30,9 @@ import {
 // `import * as schema from "./schema"` and drizzle.config.ts generates from
 // this path, so a re-export is what makes those tables real to both.
 export * from "./auth-schema";
+
+// E08 worklist queue (moderation / staleness / reports / sync / privacy).
+export * from "./worklist-schema";
 
 /** Lifecycle states a structured record can be in. Everything is 'live'
  *  this epic (behavior-preserving); E08 starts writing 'pending' from
@@ -74,6 +78,11 @@ export const record = pgTable(
       .notNull()
       .defaultNow(),
     updatedBy: text("updated_by"),
+    /** E08 staleness engine: when a human last confirmed this record is still
+     *  accurate, and how many days before it is due again. Null interval =
+     *  the store's STALENESS_DEFAULTS entry (or exempt, e.g. events). */
+    lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
+    verifyIntervalDays: integer("verify_interval_days"),
   },
   (t) => [
     primaryKey({ columns: [t.store, t.id] }),

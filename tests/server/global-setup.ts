@@ -78,7 +78,7 @@ export default async function setup() {
     // TRUNCATE deliberately: row triggers (audit immutability) don't fire on
     // TRUNCATE, and a test DB must start empty. Safe only because this is the
     // explicit TEST_DATABASE_URL.
-    await db.execute(sql`TRUNCATE record, audit, quarantine, users, invites, orgs`);
+    await db.execute(sql`TRUNCATE record, audit, quarantine, users, invites, orgs, worklist_item`);
     // org_id stays NULL: admin is a Chamber-staff role, and users_org_binding
     // rejects a staff row that carries an org.
     await db.execute(sql`
