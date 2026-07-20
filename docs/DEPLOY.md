@@ -149,6 +149,11 @@ Blueprint that declares the Docker web service, a **1 GB Disk mounted at
      here, while the site is still up. The fuller three-line pre-flight (plus
      the `psql` variant, if you happen to have it) is in
      [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) under "PRE-FLIGHT".
+   - `WORKLIST_SWEEP_TOKEN` — `sync: false` (E08); Bearer token that lets a
+     scheduler call `POST /api/admin/worklist/sweep` (the staleness sweep)
+     without an admin session. Optional and **fail-closed**: unset disables
+     only the token path, never opens the route. Set it when registering the
+     sweep cron (docs/OPERATIONS.md §5 "Worklist & moderation").
    - **`BLOB_*` / `UPSTASH_*` stay unset on Render** — images live on the
      `/data` disk and the single instance uses the in-process rate limiter.
 3. **First deploy** runs automatically on blueprint create. Render builds the

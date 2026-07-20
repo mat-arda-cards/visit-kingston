@@ -25,6 +25,7 @@ import { validateRecord } from "./store-schemas";
 
 export type WithId = { id: string };
 export type OverlayRow<T extends WithId> = T & { _deleted?: boolean };
+export type { RecordStatus } from "./schema";
 
 /** Cross-cutting metadata stamped onto a write. Everything is optional so
  *  the store modules' existing call sites keep compiling; routes thread
@@ -175,6 +176,177 @@ export async function writeRecord<T extends WithId>(
       source,
     });
   });
+}
+
+/** A domain record with its lifecycle status surfaced (E08 admin reads). */
+export type WithStatus<T> = T & { status: RecordStatus };
+
+/** PRIVILEGED seed+overlay merge (E08): same semantics as readMergedRecords
+ *  but overlay rows of EVERY status participate (narrow via opts.statuses,
+ *  e.g. live+pending for owner-scoped portal reads) and each returned record
+ *  carries its status — seed-only records read as 'live'. Explicitly named so
+ *  a future agent adding a public page gets the fail-closed default getter,
+ *  never this. */
+export async function readMergedRecordsAdmin<T extends WithId>(
+  store: string,
+  seed: T[],
+  opts?: { statuses?: RecordStatus[] },
+): Promise<WithStatus<T>[]> {
+  const byId = new Map<string, WithStatus<T> & { _deleted?: boolean }>();
+  for (const s of seed) byId.set(s.id, { ...s, status: "live" as RecordStatus });
+  if (!buildingWithoutDb()) {
+    const db = getDb();
+    const rows = await db
+      .select({ doc: record.doc, deleted: record.deleted, status: record.status })
+      .from(record)
+      .where(
+        opts?.statuses?.length
+          ? and(eq(record.store, store), inArray(record.status, opts.statuses))
+          : eq(record.store, store),
+      );
+    for (const r of rows) {
+      byId.set((r.doc as T).id, {
+        ...(r.doc as T),
+        status: r.status,
+        ...(r.deleted ? { _deleted: true as const } : {}),
+      });
+    }
+  }
+  return [...byId.values()]
+    .filter((r) => !r._deleted)
+    .map(({ _deleted: _ignored, ...rest }) => rest as WithStatus<T>);
+}
+
+/** Flip ONLY the lifecycle status of an overlay row, preserving its doc —
+ *  the approve/takedown primitive. Audited as a status-change with the old
+ *  and new status. Returns false when no overlay row exists (seed-only
+ *  records have nothing to flip — take one down by overlaying it with its
+ *  seed doc and the new status via writeRecord) or the row is a tombstone. */
+export async function setRecordStatus(
+  store: string,
+  id: string,
+  status: RecordStatus,
+  meta?: WriteMeta,
+): Promise<boolean> {
+  const db = getDb();
+  const actor = meta?.actor ?? "system";
+  const source = meta?.source ?? "admin";
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(record)
+      .where(and(eq(record.store, store), eq(record.id, id)))
+      .for("update");
+    if (!row || row.deleted) return false;
+    await tx
+      .update(record)
+      .set({ status, updatedAt: now, updatedBy: actor })
+      .where(and(eq(record.store, store), eq(record.id, id)));
+    await tx.insert(audit).values({
+      actor,
+      action: "status-change",
+      store,
+      recordId: id,
+      before: { status: row.status },
+      after: { status },
+      source,
+    });
+    return true;
+  });
+}
+
+/** Mark a record human-verified now (E08 staleness engine): stamps
+ *  last_verified_at and audits it. Overlay rows only — a seed-only record
+ *  has no row to stamp and returns false (it joins the staleness engine the
+ *  first time any write overlays it; docs/OPERATIONS.md explains). */
+export async function markRecordVerified(
+  store: string,
+  id: string,
+  meta?: WriteMeta,
+): Promise<boolean> {
+  const db = getDb();
+  const actor = meta?.actor ?? "system";
+  const source = meta?.source ?? "admin";
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(record)
+      .where(and(eq(record.store, store), eq(record.id, id)))
+      .for("update");
+    if (!row || row.deleted) return false;
+    await tx
+      .update(record)
+      .set({ lastVerifiedAt: now })
+      .where(and(eq(record.store, store), eq(record.id, id)));
+    await tx.insert(audit).values({
+      actor,
+      action: "verify",
+      store,
+      recordId: id,
+      before: { lastVerifiedAt: row.lastVerifiedAt?.toISOString() ?? null },
+      after: { lastVerifiedAt: now.toISOString() },
+      source,
+    });
+    return true;
+  });
+}
+
+/** Live overlay rows past their verify-by date (E08 staleness sweep input).
+ *  Interval precedence: the row's own verify_interval_days, else the store's
+ *  entry in `defaults`. Clock anchor: last_verified_at, else updated_at (a
+ *  row that has never been verified counts from its last write). Only stores
+ *  named in `defaults` participate; seed-only records have no row and are
+ *  out of scope until something overlays them. */
+export async function listVerifyDue(
+  defaults: Record<string, number>,
+  now: Date = new Date(),
+): Promise<
+  {
+    store: string;
+    id: string;
+    doc: Record<string, unknown>;
+    lastVerifiedAt: Date | null;
+    intervalDays: number;
+  }[]
+> {
+  const stores = Object.keys(defaults);
+  if (!stores.length) return [];
+  const db = getDb();
+  const rows = await db
+    .select({
+      store: record.store,
+      id: record.id,
+      doc: record.doc,
+      lastVerifiedAt: record.lastVerifiedAt,
+      verifyIntervalDays: record.verifyIntervalDays,
+      updatedAt: record.updatedAt,
+    })
+    .from(record)
+    .where(
+      and(
+        inArray(record.store, stores),
+        eq(record.status, "live"),
+        eq(record.deleted, false),
+      ),
+    );
+  const due: Awaited<ReturnType<typeof listVerifyDue>> = [];
+  for (const r of rows) {
+    const intervalDays = r.verifyIntervalDays ?? defaults[r.store];
+    const anchor = r.lastVerifiedAt ?? r.updatedAt;
+    const dueAt = new Date(anchor.getTime() + intervalDays * 86_400_000);
+    if (dueAt <= now) {
+      due.push({
+        store: r.store,
+        id: r.id,
+        doc: r.doc,
+        lastVerifiedAt: r.lastVerifiedAt,
+        intervalDays,
+      });
+    }
+  }
+  return due;
 }
 
 /** Full rows (docs + governance metadata) — the read the backup/export

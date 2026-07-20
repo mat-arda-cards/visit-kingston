@@ -162,7 +162,35 @@ Server-only (touches the filesystem; `import type` is fine anywhere). Dual-backe
 - **Photos** → Blob in prod (`putImage`), `.data/hunts/{refs,photos}/…` in dev.
 - `saveHunt` re-validates ids (`isSafeId` — ids become path segments), rejects slug collisions across the merged set, preserves a stop's existing `referencePhoto` when omitted, and only keeps an incoming `referencePhoto` if it passes sanitization and starts with `refs/`. `saveReferencePhoto` materializes a seed hunt into the custom store so the pointer has somewhere to live. `saveSubmission` computes `verified` (§12.2) and appends. `getPhotoAbsolutePath`/`readPhoto` do strict path sanitization (§13). `MAX_PHOTO_BYTES = 8 MiB`; images jpeg/png/webp/heic.
 
-### 3.6 Migration path
+### 3.6 Worklist queue — `worklist_item` (E08)
+
+One generic queue table powers five review consumers: **moderation** of
+member/public submissions, **report_inaccurate** visitor feedback,
+**staleness** re-verification, and — schema + fixtures only until their
+producers land — **sync_conflict** (E16) and **privacy_request** (E11).
+
+Shape (`src/lib/db/worklist-schema.ts`): `id` uuid PK · `type` /
+`state` text with CHECKs (`open | in_progress | resolved | dismissed`) ·
+`subject_store` + `subject_id` + denormalized `subject_label` ·
+`assignee_user_id` · `due_at` · `payload` jsonb (per-type shape, validated by
+`src/lib/schemas/worklist.ts` — deliberately NOT a DOMAIN_SCHEMAS domain) ·
+`resolution` + `resolution_note` · created/updated/resolved stamps. The
+load-bearing constraint is the **partial unique index**
+`(type, subject_store, subject_id) WHERE state IN ('open','in_progress')`:
+one active item per subject per type, which makes repeat reports merge and
+the staleness sweep idempotent structurally.
+
+Module map: `src/lib/db/worklist.ts` (data layer; third sanctioned `audit`
+writer — every mutation + its audit row in one transaction) →
+`src/lib/stores/worklist-store.ts` (domain API + `STALENESS_DEFAULTS`) →
+`src/lib/moderation.ts` (producer rules + approve/reject/takedown engine) →
+`/api/admin/worklist` (+ `/sweep`) → `/admin/worklist` UI. Member content
+flows: new records are stored `status='pending'`; edits of live records ride
+the item payload (`payload.proposed`) and never touch the live record;
+approval re-validates through the store write-gate at approval time. The
+enforcement suite is `tests/unit/moderation-gate.test.ts` (CI-blocking).
+
+### 3.7 Migration path
 
 `npm run import:data-dir -- --data-dir <dir>` (`scripts/import-data-dir.ts`, semantics in `scripts/import-core.ts`) loads a populated `DATA_DIR`-shaped tree — a `.data/` copy or a backup bundle restored via `scripts/restore-backup.mjs` — into Postgres: dry-run diff by default, `--apply` (+ typed host confirmation, or `--yes`) to write through the app's choke point with `import` audit rows; schema-invalid records are parked in the `quarantine` table, never `record`; append logs are run-once (`--force-append` to override); images are not moved (no Blob uploads this epic). The tables themselves come from checked-in Drizzle migrations (`db/migrations/`, generated from `src/lib/db/schema.ts`, applied at boot or via `npm run db:migrate`). `/api/admin/backup` streams the whole `DATA_DIR` as a JSON bundle for off-site backup (restore via `scripts/restore-backup.mjs`).
 

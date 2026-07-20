@@ -274,7 +274,12 @@ export async function listWorklistItems(
   return query.orderBy(asc(worklistItem.dueAt), asc(worklistItem.createdAt));
 }
 
+/** worklist_item.id is a uuid column — a malformed id must read as "not
+ *  found" (22P02 from Postgres otherwise), since routes pass client input. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getWorklistItem(id: string): Promise<WorklistItemRow | undefined> {
+  if (!UUID_RE.test(id)) return undefined;
   const [row] = await getDb().select().from(worklistItem).where(eq(worklistItem.id, id));
   return row;
 }
@@ -307,6 +312,7 @@ async function mutateItem(
   set: (row: WorklistItemRow) => Partial<typeof worklistItem.$inferInsert>,
   meta?: WorklistWriteMeta,
 ): Promise<WorklistItemRow | null> {
+  if (!UUID_RE.test(id)) return null;
   const db = getDb();
   const actor = meta?.actor ?? "system";
   const source = meta?.source ?? "system";

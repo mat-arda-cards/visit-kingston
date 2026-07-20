@@ -4,6 +4,7 @@ import { getEvents } from "@/lib/stores/event-store";
 import { getCopyOverrides, copyText } from "@/lib/stores/site-store";
 import { assertPageVisible, HiddenPageBanner } from "@/lib/page-visibility";
 import { formatPacificDate, formatPacificTime, todayPacific } from "@/lib/time";
+import { ReportInaccurate } from "@/components/report-inaccurate";
 import {
   Badge,
   Callout,
@@ -125,6 +126,7 @@ function EventCard({ event }: { event: EventItem }) {
               </>
             )}
           </p>
+          <ReportInaccurate store="events" id={event.id} subject={event.title} />
         </div>
       </div>
     </Card>

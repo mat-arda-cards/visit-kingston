@@ -76,6 +76,7 @@ working copy's `.env.local` — reference that, don't reprint secrets.
 | `DATA_DIR` | No locally (defaults to `<repo>/.data`); **set in production** | Absolute path to the mutable-state root, resolved via `src/lib/data-dir.ts`. Leave unset locally. In production it **must** be an absolute path on a mounted persistent volume (`/data` on Render/Fly) or redeploys wipe accounts, portal edits, and photos. |
 | `SETUP_TOKEN` | Only to bootstrap the first admin (locally or in production) — `POST /api/auth/setup` 403s fail-closed without it | Any string you choose, e.g. `openssl rand -hex 16`. Only consulted while zero users exist (`hasAnyUsers()` is checked first) — once an admin exists, it's never read again. Set it in `.env.local` before running `/portal/setup` on a fresh `.data/`; on Render it's `generateValue: true`. |
 | `DATABASE_URL` | **Yes since E05** — structured data (listings, events, auth, …) lives in Postgres; `next dev` pages fail without it. Images/photos stay on disk under `DATA_DIR`. | A throwaway local Postgres (`docker run -e POSTGRES_PASSWORD=ci -p 5432:5432 postgres:16` → `postgres://postgres:ci@127.0.0.1:5432/postgres`) or a personal Neon dev branch. Migrations under `db/migrations/` apply automatically at server start. **Never point local dev at the production database.** |
+| `WORKLIST_SWEEP_TOKEN` | No — only for the E08 staleness-sweep cron; the sweep also runs from any admin session, and unset simply disables the token path (fail-closed, never open) | `openssl rand -hex 32`, set on Render (both services) and in whatever scheduler calls `POST /api/admin/worklist/sweep` with `Authorization: Bearer …` — see §5 "Worklist & moderation". |
 
 **Remaining Phase-2 (Vercel) vars** — `BLOB_READ_WRITE_TOKEN`,
 `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` — are **not** set locally or
@@ -367,6 +368,7 @@ which redirects to `/portal/setup`. Editors write records into Postgres
 | `/admin/content` | Content CMS: edit the 77 copy blocks (`src/lib/site-copy-registry.ts`, reaching client components via `copy-context.tsx`) and **show/hide pages** (page-visibility) |
 | `/admin/ferry-info` | Structured ferry **facts** (payment / boarding-pass / cash-tips / sources), the **prediction on/off** toggle, and the **SR-104 boarding-pass override** |
 | `/admin/listings` | Restaurants (add / edit / hide via tombstone), lodging, and webcams |
+| `/admin/worklist` | The one review queue (E08): member submissions, visitor reports, re-verify checks — see "Worklist & moderation" below |
 | `/admin/itineraries` | Build/edit itineraries |
 | `/admin/hunts` | Build/edit scavenger hunts; review player submissions |
 | `/admin/map` | Parking-zone **polygon editor** (MapZone, Geoman) |
@@ -376,6 +378,58 @@ which redirects to `/portal/setup`. Editors write records into Postgres
 (the `ferry-prediction` record) defaults to **OFF**: the public sees nothing,
 but **signed-in admins get a preview** so they can validate before flipping it
 on. Flip it on only once you trust the estimate against reality.
+
+### Worklist & moderation (E08)
+
+`/admin/worklist` is the one review queue. Since E08, **nothing a member or
+the public submits appears on the site until it's approved there** — member
+writes land as `status='pending'` (invisible on every public page, feed, and
+embed), and member *edits* of live content never touch the live record at
+all: the full proposed revision rides inside the queue item until you approve
+it. Admin edits through the normal editors still publish instantly — admins
+are the moderators.
+
+The queue holds five kinds of work (one item per record per kind — repeat
+reports merge into the open item):
+
+| Type | What it is | Actions |
+|---|---|---|
+| Moderation | A member's new record, proposed edit, or removal request; also scavenger-hunt photos | **Approve** (publishes / executes), **Reject** (needs a note — tell the submitter why), **Take down** |
+| Reports | A visitor tapped "Report an issue" on /eat or /events | **Fixed it** after correcting the record, or Dismiss |
+| Re-verify | A record passed its verify-by window (see intervals below) | **Still accurate** (stamps it verified), or Archive |
+| Sync conflicts | Arrives with E16 (AMS sync) — shape ready, no producer yet | Resolve/Dismiss |
+| Privacy | Arrives with E11 — shape ready, no producer yet | Resolve/Dismiss |
+
+**Phone flow (~10 s per item):** open the queue → tap an item → read the
+before/after (edits show only the changed fields) → one tap + confirm.
+Destructive actions always confirm first. Use the **Overdue** chip to see
+breaches; the working SLA is **review within 48 hours** — set a due date on
+anything you're deferring so it surfaces there instead of getting lost.
+
+**Approve semantics worth knowing:** approval re-validates the proposal
+against the current schema — if the rules tightened since submission it is
+auto-rejected with the validation message in the note, never force-written.
+**Takedown** (from the queue or a report) flips the record to `pending` right
+now; public pages drop it on the next ISR pass (~60 s) and the events feed
+within its cache window (up to ~15 min for third-party pollers — that lag is
+the documented cost of feed caching, don't disable it).
+
+**Staleness sweep:** `POST /api/admin/worklist/sweep` files a Re-verify item
+for every live record past its window — restaurants 90 days,
+lodging/webcams/charities 180, itineraries 365 (a record-level
+`verify_interval_days` overrides; events and volunteer shifts expire on their
+own and are exempt). The sweep is idempotent — run it as often as you like.
+Schedule it either as a **Render Cron Job** (dashboard → New → Cron Job,
+`curl -fsS -X POST -H "Authorization: Bearer $WORKLIST_SWEEP_TOKEN"
+https://<production-host>/api/admin/worklist/sweep`, weekly is plenty) or as
+a GitHub Actions cron following the ferry-observe pattern
+(`.github/workflows/ferry-observe.yml`). The token is env-only
+(`WORKLIST_SWEEP_TOKEN`, §1 and §12); with it unset the sweep still works
+from any signed-in admin session — the button-free fallback is hitting the
+URL while signed in. Note: **seed records** (content that ships in git and
+has never been edited) carry no database row yet, so the sweep skips them
+until their first edit/verify overlays them — the §6 quarterly hand-check
+still owns those.
 
 ### Off-board a volunteer the same day (E06)
 
@@ -531,7 +585,12 @@ is authoritative):
 - **Airbnb/Vrbo lodging deep links** — listings die when owners delist; check
   in a browser.
 - **Pull an off-site admin backup bundle** (§4) so the off-Render copy stays fresh.
-- **Rotate `BACKUP_TOKEN` and `FERRY_OBSERVE_TOKEN`** — see §12 Secret rotation.
+- **Rotate `BACKUP_TOKEN`, `FERRY_OBSERVE_TOKEN`, and `WORKLIST_SWEEP_TOKEN`** — see §12 Secret rotation.
+
+Since E08 the staleness sweep (§5 "Worklist & moderation") files Re-verify
+queue items for overlay-backed records automatically — this hand-check
+remains authoritative for seed records the sweep can't see yet and for the
+deep-link/403 checks no automation can do.
 
 ---
 
@@ -807,6 +866,7 @@ plan) — no new spend.
 |---|---|---|
 | `BACKUP_TOKEN` | Quarterly (align with the §6 quarterly checklist) | `openssl rand -hex 32` → update the Render dashboard env var on **both** services → update the GitHub Actions repo secret (`gh secret set BACKUP_TOKEN`, value piped via stdin, never a CLI arg) → no redeploy required (runtime var) |
 | `FERRY_OBSERVE_TOKEN` | Quarterly | Same procedure as `BACKUP_TOKEN` above — one value shared by both ferry cron workflows |
+| `WORKLIST_SWEEP_TOKEN` | Quarterly | Same procedure — update the Render env var on **both** services and wherever the sweep cron is registered (Render Cron Job or GH Actions secret). Fail-closed: while rotated-but-unset the sweep just needs an admin session. |
 | age keypair (`BACKUP_AGE_RECIPIENT`) | Annually, or immediately on any suspicion of exposure | `age-keygen` → new **public** key becomes the repo variable `BACKUP_AGE_RECIPIENT` (`gh variable set`) → new **private** key goes to 1Password ("ExploreKingston backup age key") → **keep every old private key** — backups encrypted under a retired key can only be decrypted with it, and rotation is forward-only (old backups are never re-encrypted) |
 | `AUTH_SECRET` | Never casually — rotating logs **every** signed-in user out (see §10 "Portal login loops"). Only rotate on a real compromise. | Render dashboard env var → redeploy. Since E06 there IS per-user revocation (disable / reset / role change bump `session_version`), so rotating this is only for a compromise of the SECRET itself — to remove one person, use §5 "Off-board a volunteer". |
 
