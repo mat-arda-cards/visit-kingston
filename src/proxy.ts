@@ -51,18 +51,28 @@ export const config = {
   ],
 };
 
-/** The ONE machine-token path behind the proxy: the E08 staleness sweep,
- *  called by a cron with `Authorization: Bearer $WORKLIST_SWEEP_TOKEN` (or
- *  `?token=`) and no session cookie. The proxy compares the token itself —
- *  it runs on the Node runtime, so the env var is right here — and stays
- *  fail-closed: env unset or mismatch falls through to the cookie check and
- *  its 401. The route re-checks the same token (authoritative, like every
- *  other gate behind this proxy). Discovered the hard way: without this
- *  carve-out the cron's Bearer request died here and never reached the
- *  route's token check at all. */
-function sweepTokenOk(request: NextRequest): boolean {
-  if (request.nextUrl.pathname !== "/api/admin/worklist/sweep") return false;
-  const expected = process.env.WORKLIST_SWEEP_TOKEN;
+/** Machine-token paths behind the proxy: cron-driven routes that carry
+ *  `Authorization: Bearer <env token>` (or `?token=`) and no session cookie.
+ *  The proxy compares the token itself — it runs on the Node runtime, so the
+ *  env vars are right here — and stays fail-closed: env unset or mismatch
+ *  falls through to the cookie check and its 401. Each route re-checks its
+ *  own token as the authoritative gate, like every gate behind this proxy.
+ *
+ *  Discovered the hard way, twice: without this carve-out a cron's Bearer
+ *  request dies here and never reaches the route's token check at all — the
+ *  E08 sweep first, and then /api/admin/backup, whose E03 token path this
+ *  proxy had been silently strangling since E06 landed (the nightly backup
+ *  failures blamed on the lost token had a second cause). Path-exact match:
+ *  a machine token opens exactly its one route and nothing else. */
+const MACHINE_TOKEN_ROUTES: Record<string, string> = {
+  "/api/admin/worklist/sweep": "WORKLIST_SWEEP_TOKEN",
+  "/api/admin/backup": "BACKUP_TOKEN",
+};
+
+function machineTokenOk(request: NextRequest): boolean {
+  const envKey = MACHINE_TOKEN_ROUTES[request.nextUrl.pathname];
+  if (!envKey) return false;
+  const expected = process.env[envKey];
   if (!expected) return false;
   const provided =
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
@@ -72,7 +82,7 @@ function sweepTokenOk(request: NextRequest): boolean {
 }
 
 export function proxy(request: NextRequest): NextResponse {
-  if (sweepTokenOk(request)) return NextResponse.next();
+  if (machineTokenOk(request)) return NextResponse.next();
 
   const token = request.cookies.get(SESSION_COOKIE)?.value;
 
