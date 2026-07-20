@@ -128,7 +128,7 @@ Consequence: an overlay record fully *replaces* the seed record (no field-level 
 | `boarding-pass-store.ts` | `boarding-pass-override` (id `override`) | none | admin daily override of the SR-104 pass verdict; lapses at Pacific midnight (§12.6). `getEffectiveBoardingPass()` returns override-or-estimate. |
 | `ferry-observations.ts` | append log + `ferry-accuracy` overlay | none | Append snapshots of sailing fullness/delay → empirical busyness table + accuracy backtest (§6). |
 
-**Auth files** live in the SAME overlay table in DB mode (`store='auth-users'`, `store='auth-invites'`; invites keyed by their code in the `id` column) or in `.data/auth/{users,invites}.json` in file mode. `auth.ts` branches on `hasDb()` per call. *(Superseded by E05: Postgres-only — `record` rows, same store names; the file branch and `hasDb()` are gone.)*
+**Auth files** live in the SAME overlay table in DB mode (`store='auth-users'`, `store='auth-invites'`; invites keyed by their code in the `id` column) or in `.data/auth/{users,invites}.json` in file mode. `auth.ts` branches on `hasDb()` per call. *(Superseded by E05, then by E06: auth is Postgres-only and is no longer an overlay store at all — users, orgs, and invites live in dedicated `users` / `orgs` / `invites` tables behind `src/lib/db/auth-store.ts` (§4), **not** `record` rows under `auth-users`/`auth-invites`. The file branch, `hasDb()`, and the auth overlay store names are all gone.)*
 
 **Append paths** (all dual-backend, all fail-soft, corrupt lines skipped) *(superseded by E05: DB-only — the jsonl branches are gone; tables unchanged)*:
 - **Analytics** — `analytics-store.ts` → `.data/analytics/events.jsonl` or `analytics_event`. `summarize()` re-reads and re-aggregates the whole log per call ("fine at Kingston scale").
@@ -477,7 +477,7 @@ Every route is `fs`/DB-backed and therefore effectively dynamic; only the feeds 
 | `/portal/setup` | force-dynamic | auth | redirects once users exist |
 | `/portal/account` | force-dynamic | auth | self-service profile/password |
 | `/portal/join` | static | — | invite redemption form |
-| `/portal/business` | force-dynamic | auth, business-store | admins see all; businesses their `linkedIds` |
+| `/portal/business` | force-dynamic | auth, business-store | admins see all; `member-business` users see their org's `linked_ids` |
 | `/portal/business/[id]` | force-dynamic | auth, business/event stores | `canEdit` redirect; `<BusinessEditor/>` |
 | `/portal/nonprofit` | force-dynamic | auth, charity-store | mirror of business list |
 | `/portal/nonprofit/[id]` | force-dynamic | auth, charity/event stores, time | `<NonprofitEditor/>` |

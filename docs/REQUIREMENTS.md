@@ -325,10 +325,13 @@ ferry fact (FR-7.4). Parking is one view of the general map CMS (FR-17).
 - FR-13.2 Admin sees/edits everything: all portals, accounts and invites, hunts,
   itineraries, listings, the content CMS, the map CMS and parking editor,
   structured ferry facts, the ferry-prediction switch, and visitor insights.
-- FR-13.3 All `/admin` routes are role-gated by `src/app/admin/layout.tsx` (with
-  a visible pre-setup grace before any account exists, so local bootstrap can't
-  lock itself out). Every admin API route re-checks the session independently,
-  because API routes bypass the layout.
+- FR-13.3 All `/admin` routes are role-gated at the request boundary by
+  `src/proxy.ts` (the Next 16 convention — not `middleware.ts`) and again by
+  `src/app/admin/layout.tsx`. There is **no pre-setup grace** — it was removed
+  in E06. `/admin` is never world-readable, not even when zero accounts exist;
+  it always redirects non-admins to `/portal`, and bootstrap goes through the
+  first-run setup route (FR-13.1) instead. Every admin API route re-checks the
+  session independently, because API routes bypass the layout.
 - FR-13.4 **Content CMS (`/admin/content`).** (a) Edit any of the site's
   headline **copy blocks** — currently 92 registered blocks
   (`src/lib/site-copy-registry.ts`) — where each block's fallback is the exact
@@ -523,17 +526,25 @@ Neon Postgres on every host; only the image and rate-limit seams
 presence, and nothing above the stores knows which backend is active.
 
 - **Postgres (required, E05):** the `record` table backs every seed+overlay
-  collection *and* auth; append tables for analytics/survey/observations.
-  Schema from `src/lib/db/schema.ts` → checked-in `db/migrations/`, applied at
-  boot; every write goes through the audited zod choke point
-  (`src/lib/db/records.ts`). Seeds in git remain the merge baseline.
+  collection; auth lives in its own dedicated `users` / `orgs` / `invites`
+  tables (E06), not in `record`; append tables for
+  analytics/survey/observations. Schema from `src/lib/db/schema.ts` →
+  checked-in `db/migrations/`, applied at boot; every write goes through the
+  audited zod choke point (`src/lib/db/records.ts`). Seeds in git remain the
+  merge baseline.
 - **Disk (`DATA_DIR`, default `.data/`):** images/hunt photos only (until
   E15); Vercel Blob takes them when `BLOB_READ_WRITE_TOKEN` is set; Upstash
   Redis for serverless rate limiting.
 - A **health probe** (`/api/health`) reports `{ ok, dataDir, dataWritable,
   dbOk }` and returns 503 until the data directory is writable **and**
-  Postgres answers — a read-only volume or a deploy missing `DATABASE_URL` is
-  caught before real users hit it (deploys fail closed).
+  Postgres answers. **This does not fail closed.** Both Render services mount a
+  persistent disk, and only one instance can hold that mount, so Render stops
+  the old instance before starting the new one: every deploy is a ~15 s full
+  outage, and a release that never goes healthy leaves the service returning
+  502 with no previous release still serving. Merging to `main` auto-deploys,
+  so `DATABASE_URL` and the disk mount must be verified *before* the merge, not
+  after. Full explanation in [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) under
+  "Migrations under auto-deploy" and "Every deploy is a brief outage".
 - **Backup/restore** must exist: an admin-gated JSON bundle of the whole data
   directory (`/api/admin/backup`, "⤓ Download backup" on `/admin`,
   restore via `scripts/restore-backup.mjs`), plus host-level snapshots.
@@ -615,5 +626,7 @@ it learns from.
 4. Does the Chamber want volunteer *signup* handled in-app (accounts for
    volunteers) or is the contact-the-org path permanent?
 5. PWA scope for v2: offline schedules only, or full page caching?
-6. Phase 2 trigger: what event moves the running home from Render's disk to the
-   Neon/Blob/Upstash backends (traffic, cost, or the custom-domain launch)?
+6. Phase 2 trigger: structured data already moved to Neon (E05, live in
+   production). What event moves the remaining seams — image storage and rate
+   limiting — off Render's disk to the Blob/Upstash backends (traffic, cost, or
+   the custom-domain launch)?
