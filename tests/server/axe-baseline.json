@@ -16,5 +16,8 @@
   ],
   "/about": [
     "color-contrast"
+  ],
+  "/admin/worklist": [
+    "color-contrast"
   ]
 }

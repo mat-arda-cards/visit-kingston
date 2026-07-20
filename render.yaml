@@ -85,6 +85,13 @@ services:
       - key: FERRY_OBSERVE_TOKEN
         sync: false
 
+      # Bearer token for the E08 staleness-sweep cron to call
+      # POST /api/admin/worklist/sweep without an admin session. FAIL-CLOSED:
+      # unset just disables the token path (the sweep still works from an
+      # admin session) — unlike FERRY_OBSERVE_TOKEN it never opens the route.
+      - key: WORKLIST_SWEEP_TOKEN
+        sync: false
+
   # Staging target for risky changes (E03). Builds the SAME Dockerfile/image
   # as production; deploy to it with `git push origin <branch>:staging`. It
   # starts from an EMPTY disk (its own `data-staging` volume) — no production
@@ -138,6 +145,8 @@ services:
       - key: BACKUP_TOKEN
         sync: false
       - key: FERRY_OBSERVE_TOKEN
+        sync: false
+      - key: WORKLIST_SWEEP_TOKEN
         sync: false
       # Makes /robots.txt disallow everything (src/app/robots.ts). Plain
       # runtime value, not NEXT_PUBLIC_ — both services ship the same image
