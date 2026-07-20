@@ -97,6 +97,11 @@ export default async function PortalPage() {
         blurb: "Busyness prediction on/off + accuracy, boarding-pass status, and payment/cash facts.",
       },
       {
+        href: "/admin/worklist",
+        title: "Worklist / moderation",
+        blurb: "Review member submissions, visitor reports, and content due for a re-check.",
+      },
+      {
         href: "/admin/itineraries",
         title: "Itineraries",
         blurb: "Build and edit the ready-made day plans.",

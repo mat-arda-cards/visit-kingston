@@ -15,6 +15,14 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { BASE_URL } from "./config";
 
 const PAGES = ["/", "/ferry", "/eat", "/events", "/stay", "/about"];
+// Admin surfaces need a session; the global-setup seeds ci@example.test.
+// E08 adds the worklist queue. Its baseline entry carries only
+// `color-contrast`, which comes from the SHARED site-chrome link
+// (text-tide-deep — the same rule already baselined on every public page;
+// E14 owns that remediation). The worklist UI itself audits clean — any new
+// rule id on this page fails the suite.
+const ADMIN_PAGES = ["/admin/worklist"];
+const ALL_PAGES = [...PAGES, ...ADMIN_PAGES];
 const BASELINE_FILE = path.join(process.cwd(), "tests", "server", "axe-baseline.json");
 const UPDATE = process.env.AXE_UPDATE_BASELINE === "1";
 
@@ -36,20 +44,27 @@ afterAll(async () => {
   await browser?.close();
   if (UPDATE) {
     const ordered: Record<string, string[]> = {};
-    for (const p of PAGES) ordered[p] = results[p] ?? [];
+    for (const p of ALL_PAGES) ordered[p] = results[p] ?? [];
     fs.writeFileSync(BASELINE_FILE, JSON.stringify(ordered, null, 2) + "\n", "utf8");
     console.warn(`[axe] wrote baseline (${Object.keys(ordered).length} pages) to ${BASELINE_FILE}`);
   }
 });
 
 describe("axe accessibility smoke (serious/critical)", () => {
-  it.each(PAGES)("%s has no un-baselined serious/critical violations", async (p) => {
+  it.each(ALL_PAGES)("%s has no un-baselined serious/critical violations", async (p) => {
     // @axe-core/playwright requires a page from an explicit context (not
     // browser.newPage()) so it can iterate frames — hence newContext() here.
     const context = await browser.newContext();
     const page = await context.newPage();
     let ids: string[];
     try {
+      if (ADMIN_PAGES.includes(p)) {
+        // context.request shares the cookie jar with the page.
+        const login = await context.request.post(BASE_URL + "/api/auth/login", {
+          data: { email: "ci@example.test", password: "ci-admin-password" },
+        });
+        expect(login.ok(), "admin login for the axe run must succeed").toBe(true);
+      }
       await page.goto(BASE_URL + p, { waitUntil: "load" });
       const { violations } = await new AxeBuilder({ page }).analyze();
       ids = [
