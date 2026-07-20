@@ -18,7 +18,8 @@
     "db:migrate": "drizzle-kit migrate",
     "import:data-dir": "NODE_OPTIONS=--conditions=react-server tsx scripts/import-data-dir.ts",
     "export:json": "NODE_OPTIONS=--conditions=react-server tsx scripts/export-json.ts",
-    "restore:db": "NODE_OPTIONS=--conditions=react-server tsx scripts/restore-db.ts"
+    "restore:db": "NODE_OPTIONS=--conditions=react-server tsx scripts/restore-db.ts",
+    "privacy:backfill": "NODE_OPTIONS=--conditions=react-server tsx scripts/privacy-backfill.ts"
   },
   "dependencies": {
     "@geoman-io/leaflet-geoman-free": "^2.20.0",

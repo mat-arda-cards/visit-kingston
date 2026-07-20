@@ -281,6 +281,13 @@ path traversal, and rewrites every file into the target dir. Use it to restore
 onto a fresh host, a local machine, or as the source for a DB import. (For
 in-place recovery on the live service, prefer the Render disk snapshot.)
 
+> **Privacy pairing (E11):** bundles exported **before** the E11 privacy
+> backfill ran still contain data the public privacy page says is gone
+> (geo-ping coordinates, sensitive-destination outbound events, survey
+> zip/state fields). After restoring any pre-backfill bundle, immediately
+> re-run `npm run privacy:backfill -- --apply` against the restored database
+> and confirm the re-run `--dry-run` reports three zeros.
+
 ### Layer 3 — scheduled off-site encrypted backup (automatic, E03)
 
 `.github/workflows/backup-offsite.yml` runs **daily** (09:23 UTC) on GitHub

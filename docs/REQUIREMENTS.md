@@ -370,9 +370,10 @@ ferry fact (FR-7.4). Parking is one view of the general map CMS (FR-17).
   the connection (country/region/city in production), per-session random id,
   **no cookies for tracking, no third parties, no IP storage**.
 - FR-15.2 Opt-in device location: only when the visitor taps a location feature;
-  browser permission prompt; rounded to ~a block (3 decimals) before storage;
-  bucketed into named town areas; disclosed at the point of use and on the About
-  page.
+  browser permission prompt; coordinates are bounds-checked and rounded
+  transiently, then **only the named town-area bucket is stored — never a
+  coordinate** (E11); disclosed at the point of use, on the About page, and in
+  the versioned privacy notice.
 - FR-15.3 Anonymous visitor survey (distance band, overnight stay, nights, party
   size) — the only zip-level origin source, because devices do not expose zip
   codes (see NFR-5 honesty requirement). Survey reads are admin-only

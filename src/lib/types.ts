@@ -204,11 +204,11 @@ export interface Hunt {
   stops: HuntStop[];
 }
 
-/** One anonymous LTAC visitor-survey response. No PII is collected. */
+/** One anonymous LTAC visitor-survey response. No PII is collected.
+ *  (E11: the dead zip/state fields were removed — the UI never asked for
+ *  them; historical rows carrying them are stripped by privacy-backfill.) */
 export interface SurveyResponse {
   submittedAt: string;
-  homeZip?: string;
-  homeState?: string;
   distanceBand: "local" | "10-50mi" | "50mi-plus" | "out-of-state" | "international";
   overnight: boolean;
   lodgingNights?: number;

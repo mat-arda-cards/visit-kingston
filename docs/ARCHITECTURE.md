@@ -287,14 +287,18 @@ and admins can reset an account's password to a shown-once temporary value.
 ## 6. Analytics architecture
 
 First-party only, append-only, no cookies, no third parties. `AnalyticsEvent`
-has **three types**: `pageview`, `outbound`, `geo-ping` (opt-in). Survey
+has **four types**: `pageview`, `outbound`, `geo-ping` (opt-in), and `consent`
+(E11 — records the privacy-notice version granted, nothing else). Survey
 responses are a **separate** store (`survey_response`), not an analytics type.
 Ingest is via `navigator.sendBeacon` → `POST /api/track` (text/plain, parsed
 manually; always answers `{ok:true}` so telemetry never breaks a session).
 Privacy invariants are enforced **server-side in the route regardless of client
-input**: the IP is inspected once only to label dev-vs-unknown and is never
-stored; geo-ping coordinates are bounds-checked to a Kitsap box (else dropped),
-rounded to 3 decimals (~100 m), and reduced to a named area bucket. Coarse
+input**: the IP is inspected once only to label dev-vs-unknown (or for the
+in-memory GeoLite2 lookup) and is never stored; geo-ping coordinates are
+bounds-checked to a Kitsap box (else dropped), rounded, classified into a named
+area bucket, and then **discarded — only the area bucket is stored, never a
+coordinate** (E11); outbound taps to food/health-assistance destinations are
+never persisted at all (`SENSITIVE_DESTINATIONS`, `src/lib/privacy/policy.ts`). Coarse
 country/region/city geography is derived from platform headers. `/admin`
 insights are aggregate-only; the area classifier (first-match bounding boxes) is
 data the Chamber can refine. Zip codes come **only** from the anonymous survey —
