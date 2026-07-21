@@ -1,0 +1,407 @@
+"use client";
+
+// The three browser-only PWA concerns (E13), mounted ONCE from the root layout
+// so every page inherits them:
+//
+// - Service worker registration + outbox replay. /sw.js is registered after
+//   `load` (never in competition with first paint) and only in production;
+//   the offline outbox is replayed on mount and on every "online" event —
+//   there is no Background Sync in this design because iOS Safari lacks it.
+// - <OfflineBanner/> — a fixed strip while the device is offline, carrying an
+//   honest "as of" time for the copy of the page being read.
+// - <InstallNudge/> — a quiet "add to home screen" card that asks at most once
+//   in a visitor's life.
+//
+// Every browser capability used here is feature-detected and every failure
+// path is a silent no-op: a visitor in private mode, on an insecure origin, or
+// on a browser without service workers gets the plain online app, never an
+// error. Nothing here ever blocks or delays the visitor.
+
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
+import { flushOutbox } from "@/lib/outbox";
+import { formatPacificTime } from "@/lib/time";
+
+/* ── network state ──────────────────────────────────────────────────────── */
+
+// The snapshot is 0 while online, else the epoch-ms moment we first noticed we
+// were offline. Two reasons for the timestamp instead of a boolean: the banner
+// needs a "now" to age-check its label (see honestAsOf) and reading Date.now()
+// during render would be impure, and useSyncExternalStore needs a stable value
+// — recomputing Date.now() on every getSnapshot call would loop forever.
+let offlineSince = 0;
+
+function subscribeToNetwork(onChange: () => void): () => void {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+
+function readOfflineSince(): number {
+  // navigator.onLine is only trustworthy in the negative: `false` means the OS
+  // is sure there is no network. Anything else (including a browser that does
+  // not implement it) is treated as online — we never claim "offline" on a
+  // guess, because a wrong offline banner is a lie about the data below it.
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  if (!offline) {
+    offlineSince = 0;
+    return 0;
+  }
+  if (offlineSince === 0) offlineSince = Date.now();
+  return offlineSince;
+}
+
+/** Server render is always "online", so the banner renders nothing and the
+ *  first client render matches it exactly (no hydration mismatch). */
+function serverOfflineSince(): number {
+  return 0;
+}
+
+/* ── service worker + outbox replay ─────────────────────────────────────── */
+
+function replayOutbox() {
+  // Best-effort: a failed replay leaves the entries queued for the next pass.
+  void flushOutbox().catch(() => {});
+}
+
+function useServiceWorkerAndOutbox() {
+  useEffect(() => {
+    // Anything the visitor submitted while offline goes out now — on this load
+    // and again whenever the network comes back. This pair IS the replacement
+    // for Background Sync.
+    replayOutbox();
+    window.addEventListener("online", replayOutbox);
+
+    let cancelPendingRegistration = () => {};
+    // Dev has no service worker on purpose: a stale SW serving a stale bundle
+    // is the worst failure mode in this whole epic, and hot reload plus a
+    // cache-first worker is exactly how developers get locked out.
+    if (
+      typeof navigator !== "undefined" &&
+      "serviceWorker" in navigator &&
+      process.env.NODE_ENV === "production"
+    ) {
+      const register = () => {
+        navigator.serviceWorker
+          // updateViaCache: "none" makes the browser revalidate /sw.js itself
+          // rather than trusting its HTTP cache — the second defence against a
+          // stale-worker lockout (next.config.ts's no-store header is the first).
+          .register("/sw.js", { scope: "/", updateViaCache: "none" })
+          .catch(() => {
+            // Private mode, insecure context, or a disabled worker: the app
+            // simply stays online-only. Never surfaced to the visitor.
+          });
+      };
+      if (document.readyState === "complete") {
+        register();
+      } else {
+        window.addEventListener("load", register, { once: true });
+        cancelPendingRegistration = () => window.removeEventListener("load", register);
+      }
+    }
+
+    return () => {
+      window.removeEventListener("online", replayOutbox);
+      cancelPendingRegistration();
+    };
+  }, []);
+}
+
+/* ── which document is on screen ────────────────────────────────────────── */
+
+// src/app/offline/page.tsx puts this marker in its own metadata, so it rides
+// inside that page's HTML. It is the only honest witness that the precached
+// /offline document is what the visitor is looking at.
+//
+// The url cannot answer that question. When a navigation to /stay fails, the
+// worker responds with the precached /offline document and leaves the address
+// bar alone — and Next builds usePathname() from window.location, not from the
+// document it received, so the router says "/stay" while the screen says
+// "You're offline". Being served under somebody else's url is this page's
+// entire job; a hand-typed visit to /offline is the rare case.
+const OFFLINE_DOC_MARKER = 'meta[name="vk-offline-fallback"]';
+
+function subscribeToDocument(): () => void {
+  // Nothing to listen to: the marker cannot appear or vanish without a new
+  // document, and a new document is a new mount. React still re-reads the
+  // snapshot on every render, which is what catches a client-side navigation
+  // off this page while the banner is up.
+  return () => {};
+}
+
+function readIsOfflineDocument(): boolean {
+  // Feature-detected like every other browser touch in this file: no document
+  // means a silent "no", never a throw inside the root layout.
+  if (typeof document === "undefined") return false;
+  return document.querySelector(OFFLINE_DOC_MARKER) !== null;
+}
+
+/** Same shape as serverOfflineSince: the server has no document, so answering
+ *  "no" here — rather than reading the DOM in the component body — is what
+ *  keeps the first client render identical to the server's. React re-reads the
+ *  real snapshot immediately after hydration, before the banner can appear. */
+function serverIsOfflineDocument(): boolean {
+  return false;
+}
+
+/* ── offline banner ─────────────────────────────────────────────────────── */
+
+/** Oldest render we will still name a time for. See honestAsOf. */
+const MAX_HONEST_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The honesty gate on the "saved info from HH:MM" clause.
+ *
+ * `renderedAt` is genuinely the moment this HTML was produced on the routes
+ * that matter — `/` and `/ferry` are dynamic (they read cookies via getSide),
+ * and the rest of the public pages are ISR with `revalidate = 60`, so their
+ * prerender really is when the saved copy was made. The precached /offline
+ * document is the one exception: E13 deliberately keeps it statically
+ * prerendered so the service worker can hold it, which freezes its
+ * `renderedAt` at BUILD time — and that document carries no saved anything, so
+ * naming a time over it would be precisely the dishonesty this epic exists to
+ * prevent.
+ *
+ * Note what the caller passes: whether the /offline DOCUMENT is on screen, not
+ * whether the url is /offline. Offline those are different questions, and the
+ * url gets it backwards in the common case — see OFFLINE_DOC_MARKER above.
+ *
+ * The clause is dropped again for any timestamp that is unparseable, in the
+ * future, or more than a day old, which covers any page that later loses its
+ * revalidate without anyone remembering this file.
+ */
+function honestAsOf(
+  renderedAt: string,
+  observedAt: number,
+  isOfflineDocument: boolean,
+): string | null {
+  if (isOfflineDocument) return null;
+  const rendered = Date.parse(renderedAt);
+  if (!Number.isFinite(rendered)) return null;
+  const age = observedAt - rendered;
+  if (age < -60_000 || age > MAX_HONEST_AGE_MS) return null;
+  // Kingston wall-clock, matching every other time in the app (and the ferry
+  // board's own "saved times as of …" label, which sits below this one).
+  return formatPacificTime(renderedAt);
+}
+
+function OfflineBanner({ renderedAt }: { renderedAt: string }) {
+  const pathname = usePathname();
+  const observedAt = useSyncExternalStore(
+    subscribeToNetwork,
+    readOfflineSince,
+    serverOfflineSince,
+  );
+  const markerFound = useSyncExternalStore(
+    subscribeToDocument,
+    readIsOfflineDocument,
+    serverIsOfflineDocument,
+  );
+
+  if (!observedAt) return null;
+
+  // The marker names the document that was actually served; the pathname test
+  // is kept as a free second answer for the one case a url CAN settle — a
+  // visitor who typed /offline — so a future metadata edit that loses the
+  // marker still cannot put a build time on that page.
+  const asOf = honestAsOf(renderedAt, observedAt, markerFound || pathname === "/offline");
+
+  return (
+    // Fixed to the TOP on purpose: under 768px the bottom of the viewport
+    // belongs to the fixed nav bar (site-nav.tsx) and <body> already burns its
+    // padding-bottom on it. z-50 because that nav and the sticky header are
+    // z-40 and both render after this component — an equal z-index would lose.
+    // pt-[env(safe-area-inset-top)] because the layout sets viewportFit:"cover",
+    // so an installed standalone window extends under the status bar.
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-x-0 top-0 z-50 border-b border-amber-200 bg-amber-50 pt-[env(safe-area-inset-top)] shadow-sm"
+    >
+      <p className="mx-auto max-w-5xl px-4 py-2 text-center text-sm font-medium text-amber-900">
+        {asOf
+          ? `You’re offline — showing saved info from ${asOf}.`
+          : "You’re offline — showing saved info."}
+      </p>
+    </div>
+  );
+}
+
+/* ── install nudge ──────────────────────────────────────────────────────── */
+
+const VISITS_KEY = "vk-visits";
+const DISMISSED_KEY = "vk-install-nudge";
+/** Never on a visitor's first arrival — they have not decided they like us yet. */
+const MIN_VISITS = 2;
+/** iOS card waits this long so it never lands during first paint. */
+const IOS_NUDGE_DELAY_MS = 1500;
+
+/** Counted once per page load. The module flag (rather than a ref) survives
+ *  StrictMode's double-invoked effects, so one arrival never counts twice. */
+let visitCounted = false;
+
+/** The Chromium-only event. Not in lib.dom, so the minimum shape we call. */
+type InstallPromptEvent = Event & { prompt: () => Promise<unknown> };
+
+type NudgeMode = "prompt" | "ios";
+
+function isInstalled(): boolean {
+  try {
+    if (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches) {
+      return true;
+    }
+  } catch {
+    // matchMedia missing or the query is unsupported — fall through to iOS.
+  }
+  // iOS Safari reports installed state here instead of via display-mode.
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
+function isDismissed(): boolean {
+  try {
+    return localStorage.getItem(DISMISSED_KEY) === "dismissed";
+  } catch {
+    // Storage disabled: we cannot remember a dismissal, so we must not ask.
+    return true;
+  }
+}
+
+function markDismissed() {
+  try {
+    localStorage.setItem(DISMISSED_KEY, "dismissed");
+  } catch {
+    // Nothing to do — the nudge is already gone for this page load.
+  }
+}
+
+function countVisit(): number {
+  try {
+    const seen = Number(localStorage.getItem(VISITS_KEY) ?? "0");
+    const total = Number.isFinite(seen) && seen > 0 ? seen : 0;
+    if (visitCounted) return total;
+    visitCounted = true;
+    const next = total + 1;
+    localStorage.setItem(VISITS_KEY, String(next));
+    return next;
+  } catch {
+    // No storage, no counter, no nudge.
+    return 0;
+  }
+}
+
+function isIosSafari(): boolean {
+  // navigator.standalone exists ONLY on iOS Safari and is present whether or
+  // not the app is installed — a capability check, not a user-agent sniff.
+  // It is also the one engine that never fires beforeinstallprompt, which is
+  // the entire reason this branch exists.
+  return typeof navigator !== "undefined" && "standalone" in navigator;
+}
+
+function InstallNudge() {
+  const pathname = usePathname();
+  const [mode, setMode] = useState<NudgeMode | null>(null);
+  const promptEvent = useRef<InstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isInstalled() || isDismissed() || countVisit() < MIN_VISITS) return;
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      // preventDefault() suppresses Chromium's own mini-infobar so OUR quiet
+      // card is the only ask, and keeps the event usable: prompt() must be
+      // called later on the saved event, from inside a user gesture.
+      event.preventDefault();
+      promptEvent.current = event as InstallPromptEvent;
+      setMode("prompt");
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+
+    // iOS Safari has no install event at all — the Share sheet is the only
+    // route, so the card carries instructions instead of a button.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (isIosSafari()) {
+      timer = setTimeout(() => setMode("ios"), IOS_NUDGE_DELAY_MS);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  function dismiss() {
+    // Never-nag doctrine: one dismissal is permanent, exactly like the
+    // side-of-water location ask. There is no re-ask path anywhere.
+    markDismissed();
+    setMode(null);
+  }
+
+  function install() {
+    const event = promptEvent.current;
+    promptEvent.current = null;
+    // prompt() first, still inside the click's gesture. Whatever the visitor
+    // then chooses in the browser's own dialog, we never ask again.
+    void event?.prompt().catch(() => {});
+    dismiss();
+  }
+
+  if (!mode) return null;
+  // The root layout is the only layout, so it wraps /admin and /portal too.
+  // Chamber staff and member businesses are not the audience for this card.
+  if (pathname?.startsWith("/admin") || pathname?.startsWith("/portal")) return null;
+
+  return (
+    // Bottom-anchored, clear of the fixed mobile nav (4.5rem + the iOS home
+    // indicator inset, the same sum globals.css uses on <body>) — the ferry
+    // board sits at the top of the pages that matter and must stay uncovered.
+    <div className="fixed inset-x-3 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 mx-auto max-w-sm rounded-2xl border border-sand bg-white p-4 shadow-lg md:inset-x-auto md:right-4 md:bottom-4">
+      <p className="text-sm font-semibold text-sound-deep">
+        Add Explore Kingston to your home screen
+      </p>
+      <p className="mt-1 text-sm text-ink-soft">
+        {mode === "ios"
+          ? "Tap Share, then “Add to Home Screen” — ferry times work offline."
+          : "Ferry times work offline."}
+      </p>
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={dismiss}
+          className="rounded-full px-3 py-1.5 text-xs font-semibold text-ink-soft hover:text-ink"
+        >
+          {mode === "ios" ? "Got it" : "Not now"}
+        </button>
+        {mode === "prompt" && (
+          <button
+            type="button"
+            onClick={install}
+            className="rounded-full bg-tide px-3 py-1.5 text-xs font-semibold text-white hover:bg-tide-deep"
+          >
+            Install
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── mount point ────────────────────────────────────────────────────────── */
+
+/**
+ * Mounted once from the root layout, inside CopyProvider. `renderedAt` comes
+ * from the server render of that layout — when this page is later served from
+ * the service worker's cache it is the age of the copy being read, which is
+ * what the offline banner reports.
+ */
+export default function PwaClient({ renderedAt }: { renderedAt: string }) {
+  useServiceWorkerAndOutbox();
+  return (
+    <>
+      <OfflineBanner renderedAt={renderedAt} />
+      <InstallNudge />
+    </>
+  );
+}

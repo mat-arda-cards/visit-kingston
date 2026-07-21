@@ -4,6 +4,7 @@ import "./globals.css";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
 import { Tracker } from "@/components/tracker";
+import PwaClient from "@/components/pwa";
 import { getHiddenPaths, getCopyOverrides } from "@/lib/stores/site-store";
 import { CopyProvider } from "@/lib/copy-context";
 
@@ -79,6 +80,12 @@ export default async function RootLayout({
     getHiddenPaths(),
     getCopyOverrides(),
   ]);
+  // E13: the honest "as of" for the offline banner. Genuinely per-request on /
+  // and /ferry (both dynamic via cookies()), and the moment of the prerender on
+  // the ISR pages — which is exactly the age of the copy a visitor reads from
+  // the service worker cache. /offline is deliberately static, so its value is
+  // build time; OfflineBanner suppresses the clause there for that reason.
+  const renderedAt = new Date().toISOString();
   return (
     <html
       lang="en"
@@ -87,6 +94,7 @@ export default async function RootLayout({
       <body className="flex min-h-full flex-col">
         <CopyProvider overrides={copyOverrides}>
           <Tracker />
+          <PwaClient renderedAt={renderedAt} />
           <SiteNav hiddenPaths={hiddenPaths} />
           <main className="flex-1">{children}</main>
           <SiteFooter hiddenPaths={hiddenPaths} copy={copyOverrides} />
