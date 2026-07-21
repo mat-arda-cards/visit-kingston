@@ -14,7 +14,9 @@
 
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { can, getSessionUser } from "@/lib/auth";
+import { can, getOrg, getSessionUser } from "@/lib/auth";
+import { normalizedToEventItem } from "@/lib/events/normalize";
+import { unifiedEventsSharingDate } from "@/lib/events/unified";
 import {
   deleteEvent,
   eventsSharingDate,
@@ -22,6 +24,7 @@ import {
   getEventsForOwner,
   saveEvent,
 } from "@/lib/stores/event-store";
+import { getUnifiedCalendarEnabled } from "@/lib/stores/unified-calendar-store";
 import {
   holdEditProposal,
   holdNewRecord,
@@ -54,7 +57,15 @@ export async function GET(request: NextRequest) {
     if (!DATE_RE.test(onDate)) {
       return NextResponse.json({ error: "onDate must be YYYY-MM-DD" }, { status: 400 });
     }
-    const events = await eventsSharingDate(onDate, params.get("exclude") ?? undefined);
+    const exclude = params.get("exclude") ?? undefined;
+    // Unified flag ON (E12/M-16-05): anchor-date conflict warnings see the
+    // MERGED calendar, so a member picking a date learns about AMS/Tribe
+    // events too. Flag OFF: exactly the pre-E12 in-app-only lookup.
+    if (await getUnifiedCalendarEnabled()) {
+      const merged = await unifiedEventsSharingDate(onDate, exclude);
+      return NextResponse.json({ events: merged.map(normalizedToEventItem) });
+    }
+    const events = await eventsSharingDate(onDate, exclude);
     return NextResponse.json({ events });
   }
 
@@ -188,10 +199,23 @@ export async function POST(request: NextRequest) {
   // for Chamber review — new records land as 'pending' (publicly invisible),
   // edits of live records ride the worklist payload so the live record is
   // never touched, and edits of their own pending records update in place.
+  //
+  // E12 delta (FR-EVT-04 / M-05-03): an org the Chamber marked
+  // trustedAutoPublish is the ONE bypass — its creates AND edits publish
+  // directly (audit-rowed via the writeRecord choke point), same as admin.
+  // Everyone else keeps the exact E08 behavior.
   const isAdmin = user.role === "admin";
+  const trusted =
+    !isAdmin &&
+    user.orgId !== null &&
+    (await getOrg(user.orgId))?.trustedAutoPublish === true;
   try {
-    if (isAdmin) {
-      await saveEvent(event, { actor: user.email, source: "admin" });
+    if (isAdmin || trusted) {
+      await saveEvent(event, {
+        actor: user.email,
+        source: isAdmin ? "admin" : "portal",
+        ...(user.orgId ? { ownerOrgId: user.orgId } : {}),
+      });
     } else if (storedStatus === "none") {
       await holdNewRecord("events", event, event.title, user);
     } else if (storedStatus === "pending") {
@@ -206,7 +230,9 @@ export async function POST(request: NextRequest) {
     }
     throw err;
   }
-  return NextResponse.json(isAdmin ? { ok: true, event } : { ok: true, event, pending: true });
+  return NextResponse.json(
+    isAdmin || trusted ? { ok: true, event } : { ok: true, event, pending: true },
+  );
 }
 
 export async function DELETE(request: NextRequest) {

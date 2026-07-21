@@ -59,6 +59,10 @@ vi.mock("@/lib/auth", () => ({
     (u: { role: string; editableIds: string[] }, _a: string, r?: string) =>
       u.role === "admin" || (r != null && u.editableIds.includes(r)),
   ),
+  // E12 trusted-org bypass reads the org row; no org here → untrusted, so
+  // every assertion below keeps its original (hold-for-review) semantics.
+  // The trusted cases live in tests/unit/events/trusted-and-suggest.test.ts.
+  getOrg: vi.fn(async () => undefined),
 }));
 
 import { PUT as listingPUT } from "@/app/api/portal/listing/route";

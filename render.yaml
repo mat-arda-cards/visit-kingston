@@ -112,6 +112,44 @@ services:
       - key: GEOIP_EDITION
         value: GeoLite2-City
 
+      # Bearer token for the E12 events-ingest cron (below) to call
+      # POST /api/events/ingest. FAIL-CLOSED like WORKLIST_SWEEP_TOKEN: unset
+      # disables the token path (ingest still runs from an admin session /
+      # the admin "Sync now" button); production token callers get a 503.
+      # Rotation: docs/OPERATIONS.md §12.
+      - key: EVENTS_INGEST_TOKEN
+        sync: false
+
+      # Staff-generated GrowthZone whole-calendar iCal feed URL (E12 delta 2;
+      # docs/OPERATIONS.md §9 item 6b). Optional — while unset the ams-ical
+      # adapter scrapes per-event .ics files instead. TRANSITIONAL: the whole
+      # GrowthZone source ends at the R3 freeze (~April 2027, ADR-0005).
+      - key: AMS_CALENDAR_FEED_URL
+        sync: false
+
+  # E12 hourly events ingest — the FIRST Render cron in this blueprint (the
+  # binding v2 decision: crons live on Render; the two legacy ferry crons in
+  # .github/workflows/ stay put until E25 migrates them). Prebuilt curl image:
+  # the job only POSTs the token-gated ingest endpoint on the web service
+  # above — the app itself does the work. Runs regardless of the
+  # unified-calendar flag (data flows dark; render paths are flag-gated).
+  - type: cron
+    name: events-ingest
+    runtime: image
+    image:
+      url: docker.io/curlimages/curl:8.10.1
+    schedule: "23 * * * *" # hourly, off the hour to be polite to the sources
+    region: oregon
+    dockerCommand: >-
+      curl --fail --silent --show-error --max-time 600 -X POST
+      -H "Authorization: Bearer $EVENTS_INGEST_TOKEN"
+      https://explore-kingston.onrender.com/api/events/ingest
+    envVars:
+      # Same value as the web service's EVENTS_INGEST_TOKEN (set both in the
+      # dashboard; sync:false keeps it out of git).
+      - key: EVENTS_INGEST_TOKEN
+        sync: false
+
   # Staging target for risky changes (E03). Builds the SAME Dockerfile/image
   # as production; deploy to it with `git push origin <branch>:staging`. It
   # starts from an EMPTY disk (its own `data-staging` volume) — no production
@@ -175,6 +213,11 @@ services:
         sync: false
       - key: GEOIP_EDITION
         value: GeoLite2-City
+      # E12 events ingest (staging has no cron; admin "Sync now" / manual curl).
+      - key: EVENTS_INGEST_TOKEN
+        sync: false
+      - key: AMS_CALENDAR_FEED_URL
+        sync: false
       # Makes /robots.txt disallow everything (src/app/robots.ts). Plain
       # runtime value, not NEXT_PUBLIC_ — both services ship the same image
       # and branch on this at request time.

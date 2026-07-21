@@ -1,0 +1,1 @@
+ALTER TABLE "orgs" ADD COLUMN "trusted_auto_publish" boolean DEFAULT false NOT NULL;

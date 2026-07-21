@@ -10,7 +10,7 @@
 
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { can, getSessionUser } from "@/lib/auth";
+import { can, getOrg, getSessionUser } from "@/lib/auth";
 import { getCharity, saveCharity } from "@/lib/stores/charity-store";
 import {
   holdEditProposal,
@@ -182,10 +182,23 @@ export async function POST(request: NextRequest) {
     };
     // MODERATION FLOOR (E08): member writes hold for Chamber review; admin
     // writes publish directly (see src/lib/moderation.ts).
+    //
+    // E12 delta (FR-EVT-04 / M-05-03): a trustedAutoPublish org's creates
+    // AND edits publish directly too (audit-rowed) — the ONE bypass, applied
+    // to BOTH event write paths identically (this route and
+    // /api/portal/events). Everyone else keeps the exact E08 behavior.
     const isAdmin = user.role === "admin";
+    const trusted =
+      !isAdmin &&
+      user.orgId !== null &&
+      (await getOrg(user.orgId))?.trustedAutoPublish === true;
     try {
-      if (isAdmin) {
-        await saveEvent(record, { actor: user.email, source: "admin" });
+      if (isAdmin || trusted) {
+        await saveEvent(record, {
+          actor: user.email,
+          source: isAdmin ? "admin" : "portal",
+          ...(user.orgId ? { ownerOrgId: user.orgId } : {}),
+        });
       } else if (storedStatus === "none") {
         await holdNewRecord("events", record, record.title, user);
       } else if (storedStatus === "pending") {
@@ -200,7 +213,9 @@ export async function POST(request: NextRequest) {
       throw err;
     }
     return NextResponse.json(
-      isAdmin ? { ok: true, event: record } : { ok: true, event: record, pending: true },
+      isAdmin || trusted
+        ? { ok: true, event: record }
+        : { ok: true, event: record, pending: true },
     );
   }
 

@@ -43,6 +43,13 @@
       "when": 1784592771064,
       "tag": "0005_complete_susan_delgado",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784596593620,
+      "tag": "0006_bored_kid_colt",
+      "breakpoints": true
     }
   ]
 }
