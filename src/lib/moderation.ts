@@ -84,6 +84,35 @@ async function findActiveModerationItem(
 
 /* ------------------------------- producers ------------------------------- */
 
+/** E12 public suggest intake (M-05-03 / FR-EVT-04): an ANONYMOUS submission
+ *  held for review — no account, so no Actor; the submitter's name + one
+ *  contact field ride in the worklist payload (admin-only surface, never
+ *  rendered publicly) and never inside the content record. ALWAYS pending —
+ *  the anonymous path has no bypass of any kind. Approval flows through the
+ *  same approveModerationItem consumer as every other 'new' hold. */
+export async function holdSuggestedRecord<T extends WithId>(
+  store: string,
+  rec: T,
+  label: string,
+  suggest: { submitterName: string; contact: string },
+): Promise<void> {
+  await writeOverlayRecord(store, rec, {
+    actor: "public",
+    source: "public",
+    status: "pending",
+  });
+  await createWorklistItem(
+    {
+      type: "moderation",
+      subjectStore: store,
+      subjectId: rec.id,
+      subjectLabel: label,
+      payload: { kind: "new", suggest },
+    },
+    { actor: "public", source: "public" },
+  );
+}
+
 /** Member creates a record: store it as 'pending' (publicly invisible — the
  *  default getters are live-only) and open the review item. */
 export async function holdNewRecord<T extends WithId>(

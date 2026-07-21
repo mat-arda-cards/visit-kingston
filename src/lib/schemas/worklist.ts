@@ -56,6 +56,17 @@ export const moderationPayloadSchema = z
     proposed: proposedRecord.optional(),
     submitterUserId: z.string().min(1).optional(),
     note: z.string().max(2000).optional(),
+    /** E12 public suggest intake (M-05-03): submitter name + ONE contact
+     *  field, NOTHING else about the submitter (MHMDA data-minimization
+     *  floor). Worklist payloads are admin-only surfaces — the contact is
+     *  for moderation follow-up and is never rendered publicly. This shape
+     *  must never grow location or additional identity fields. */
+    suggest: z
+      .object({
+        submitterName: z.string().min(1, "your name is required").max(200),
+        contact: z.string().min(1, "a way to reach you is required").max(200),
+      })
+      .optional(),
   })
   .superRefine((val, ctx) => {
     if (val.kind === "edit" && !val.proposed) {

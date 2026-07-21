@@ -14,7 +14,7 @@
 
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { can, getSessionUser } from "@/lib/auth";
+import { can, getOrg, getSessionUser } from "@/lib/auth";
 import { normalizedToEventItem } from "@/lib/events/normalize";
 import { unifiedEventsSharingDate } from "@/lib/events/unified";
 import {
@@ -199,10 +199,23 @@ export async function POST(request: NextRequest) {
   // for Chamber review — new records land as 'pending' (publicly invisible),
   // edits of live records ride the worklist payload so the live record is
   // never touched, and edits of their own pending records update in place.
+  //
+  // E12 delta (FR-EVT-04 / M-05-03): an org the Chamber marked
+  // trustedAutoPublish is the ONE bypass — its creates AND edits publish
+  // directly (audit-rowed via the writeRecord choke point), same as admin.
+  // Everyone else keeps the exact E08 behavior.
   const isAdmin = user.role === "admin";
+  const trusted =
+    !isAdmin &&
+    user.orgId !== null &&
+    (await getOrg(user.orgId))?.trustedAutoPublish === true;
   try {
-    if (isAdmin) {
-      await saveEvent(event, { actor: user.email, source: "admin" });
+    if (isAdmin || trusted) {
+      await saveEvent(event, {
+        actor: user.email,
+        source: isAdmin ? "admin" : "portal",
+        ...(user.orgId ? { ownerOrgId: user.orgId } : {}),
+      });
     } else if (storedStatus === "none") {
       await holdNewRecord("events", event, event.title, user);
     } else if (storedStatus === "pending") {
@@ -217,7 +230,9 @@ export async function POST(request: NextRequest) {
     }
     throw err;
   }
-  return NextResponse.json(isAdmin ? { ok: true, event } : { ok: true, event, pending: true });
+  return NextResponse.json(
+    isAdmin || trusted ? { ok: true, event } : { ok: true, event, pending: true },
+  );
 }
 
 export async function DELETE(request: NextRequest) {

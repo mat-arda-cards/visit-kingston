@@ -249,7 +249,7 @@ export async function insertOrg(
 
 export async function updateOrg(
   id: string,
-  patch: { name?: string; linkedIds?: string[] },
+  patch: { name?: string; linkedIds?: string[]; trustedAutoPublish?: boolean },
   entry: Omit<AuthAuditEntry, "store" | "recordId" | "before" | "after">,
 ): Promise<OrgRow> {
   return getDb().transaction(async (tx) => {

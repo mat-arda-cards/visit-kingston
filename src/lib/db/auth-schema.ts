@@ -63,6 +63,12 @@ export const orgs = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    /** E12 moderation-bypass flag (FR-EVT-04 / M-05-03): a trusted org's
+     *  event creates and edits publish directly (audit-rowed), skipping the
+     *  E08 hold — the ONLY bypass, admin-set only. Deliberately a COLUMN and
+     *  not an entitlement: entitlements may only narrow permissions (the
+     *  authz.ts binding contract), and auto-publish widens. */
+    trustedAutoPublish: boolean("trusted_auto_publish").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

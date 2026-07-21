@@ -314,6 +314,20 @@ export async function updateOrgProfile(
   return updateOrg(orgId, patch, { actor, action: "org-update", source: "admin" });
 }
 
+/** E12: flip an org's trusted-auto-publish moderation bypass (FR-EVT-04).
+ *  Admin-gated at every call site; audit-rowed like every org mutation. */
+export async function setOrgTrustedAutoPublish(
+  orgId: string,
+  trusted: boolean,
+  actor: string,
+): Promise<OrgRow> {
+  return updateOrg(
+    orgId,
+    { trustedAutoPublish: trusted },
+    { actor, action: "org-update", source: "admin" },
+  );
+}
+
 // ---------- invites ----------
 
 export const listInvites = listInviteRows;
