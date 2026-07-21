@@ -4,6 +4,7 @@ import "./globals.css";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
 import { Tracker } from "@/components/tracker";
+import PwaClient from "@/components/pwa";
 import { getCopyOverrides } from "@/lib/stores/site-store";
 import { getEffectiveHiddenPaths } from "@/lib/page-visibility";
 import { CopyProvider } from "@/lib/copy-context";
@@ -85,6 +86,12 @@ export default async function RootLayout({
     getEffectiveHiddenPaths(),
     getCopyOverrides(),
   ]);
+  // E13: the honest "as of" for the offline banner. Genuinely per-request on /
+  // and /ferry (both dynamic via cookies()), and the moment of the prerender on
+  // the ISR pages — which is exactly the age of the copy a visitor reads from
+  // the service worker cache. /offline is deliberately static, so its value is
+  // build time; OfflineBanner suppresses the clause there for that reason.
+  const renderedAt = new Date().toISOString();
   return (
     <html
       lang="en"
@@ -116,6 +123,7 @@ export default async function RootLayout({
         />
         <CopyProvider overrides={copyOverrides}>
           <Tracker />
+          <PwaClient renderedAt={renderedAt} />
           <SiteNav hiddenPaths={hiddenPaths} />
           {/* id="main" is the skip link's target (E14). tabIndex={-1} makes it
               programmatically focusable, which is what actually MOVES focus on

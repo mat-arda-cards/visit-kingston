@@ -59,6 +59,10 @@ export default async function Home() {
   const nextFastOut = nextDeparture(fastFerry.sailings, "from-kingston");
 
   const today = todayPacific();
+  // E13: dates the ferry widget's staleness label from THIS render, not from
+  // the visitor's clock at hydration — this HTML can be served back out of the
+  // service worker's shell cache hours later. Same prop the /ferry board takes.
+  const serverNow = new Date().toISOString();
   const upcoming = events
     .filter((e) => e.start.slice(0, 10) >= today)
     .sort((a, b) => a.start.localeCompare(b.start))
@@ -118,7 +122,7 @@ export default async function Home() {
         {/* Floating Glassmorphic Ferry Status Widget */}
         <div className="mx-auto w-full max-w-5xl px-4 mt-12">
           <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
-            <NextFerries initial={ferry} tone="dark" side={side} />
+            <NextFerries initial={ferry} serverNow={serverNow} tone="dark" side={side} />
             <div className="mt-5 flex flex-wrap items-baseline gap-x-8 gap-y-2 border-t border-white/15 pt-4 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-cyan-200 font-medium">

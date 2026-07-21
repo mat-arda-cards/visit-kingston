@@ -16,7 +16,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { formatPacificTime } from "@/lib/time";
+import { formatPacificDate, formatPacificTime } from "@/lib/time";
 import type { WaterSide } from "@/lib/side";
 import {
   FERRY_DIRS,
@@ -59,6 +59,7 @@ const THEME: Record<
     link: string;
     boarding: string;
     alert: string;
+    stale: string;
     dirLabel: string;
     delayLate: string;
     delayOnTime: string;
@@ -91,6 +92,10 @@ const THEME: Record<
     link: "text-tide-deep hover:text-sound",
     boarding: "bg-coral/10 text-coral-deep",
     alert: "bg-amber-50 text-amber-900",
+    // E13. Same amber as `alert` today, but a separate key on purpose: "WSF has a
+    // service alert" and "your copy of this board is stale" are different claims
+    // and must stay independently tunable.
+    stale: "bg-amber-50 text-amber-900",
     dirLabel: "text-sound-deep",
     delayLate: "bg-coral/15 text-coral-deep",
     delayOnTime: "bg-fern text-white",
@@ -114,6 +119,7 @@ const THEME: Record<
     link: "text-seaglass hover:text-white",
     boarding: "bg-coral/25 text-white",
     alert: "bg-amber-300/15 text-amber-100",
+    stale: "bg-amber-300/15 text-amber-100",
     dirLabel: "text-white",
     delayLate: "bg-coral text-white",
     delayOnTime: "bg-fern/25 text-white",
@@ -143,6 +149,35 @@ function countdown(iso: string, now: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m ? `in ${h} hr ${m} min` : `in ${h} hr`;
+}
+
+/**
+ * E13. WHEN the times on screen were last known good, and WHY they stopped
+ * being live — two separate claims that used to share one label.
+ *
+ * "offline" is the visitor's network: a thrown fetch, or the worker handing
+ * back its saved copy (the X-SW-Fetched-At stamp). "unavailable" is a resolved
+ * response that isn't ok — most often our own server 500ing while the visitor
+ * has four bars, so "Offline" would send them hunting for a signal problem
+ * that is ours. The worker's synthetic 503 (fetch threw, nothing cached) lands
+ * in that same branch, so the "unavailable" wording must stay true for a
+ * genuinely offline reader too: it claims nothing either way about the network.
+ */
+type Stale = { at: string; reason: "offline" | "unavailable" };
+
+/**
+ * The saved instant as a Kingston wall-clock time, date-qualified whenever it
+ * isn't today: a phone that has been offline since Friday would otherwise say
+ * "as of 8:47 PM" on Sunday, which reads as tonight. `nowMs` is the ticking
+ * `now` state rather than Date.now() so this stays a pure function of render
+ * inputs. (ferry-board.tsx carries the same helper — no shared module for two
+ * small copies.)
+ */
+function savedAtLabel(iso: string, nowMs: number): string {
+  const day = formatPacificDate(iso);
+  return day === formatPacificDate(new Date(nowMs).toISOString())
+    ? formatPacificTime(iso)
+    : `${day}, ${formatPacificTime(iso)}`;
 }
 
 /** Match a sailing to its open-space record by nearest departure time (±3 min). */
@@ -272,10 +307,13 @@ function DirectionColumn({
 
 export function NextFerries({
   initial,
+  serverNow,
   tone = "light",
   side = "kingston",
 }: {
   initial: FerryStatus;
+  /** ISO timestamp from the server render that produced these sailings. */
+  serverNow: string;
   tone?: Tone;
   side?: WaterSide;
 }) {
@@ -283,6 +321,18 @@ export function NextFerries({
   const [data, setData] = useState<FerryStatus>(initial);
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
+  // E13 staleness. The instant is an ISO string, not a number: the service
+  // worker stamps X-SW-Fetched-At as ISO and formatPacificTime() takes an ISO
+  // string, so both ends agree without a conversion step.
+  const [stale, setStale] = useState<Stale | null>(null);
+  // Must be a ref, not state: refresh() is defined inside the polling effect,
+  // whose dep array is empty, so it closes over the first render forever. A
+  // state dep would tear down and rebuild the 60s interval on every poll.
+  // Seeded from serverNow, NOT from the client clock at mount: this HTML can
+  // itself come from the worker's shell cache hours later, and dating those
+  // sailings "just now" is the exact lie this epic exists to remove. Same
+  // treatment as the sibling ferry-board.tsx.
+  const lastGoodRef = useRef<string>(serverNow);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Opt-in in-page reminders: `armed` holds "dir|departs" keys; `firedRef` keeps
   // a fired reminder from re-firing across the 20s ticks. Notifications only work
@@ -391,12 +441,30 @@ export function NextFerries({
       try {
         const res = await fetch("/api/ferry/status");
         if (res.ok) {
+          // E13: a service-worker cache hit resolves with res.ok === true, so the
+          // catch never fires and this header is the only signal that the bytes
+          // are old. No header means genuinely fresh — no SW, an unsupported
+          // browser, or a dev build must not be made to look like a failure.
+          const fetchedAt = res.headers.get("X-SW-Fetched-At");
           const json = (await res.json()) as FerryStatus;
           setData(json);
           setNow(Date.now());
+          if (fetchedAt) {
+            setStale({ at: fetchedAt, reason: "offline" });
+          } else {
+            lastGoodRef.current = new Date().toISOString();
+            setStale(null);
+          }
+        } else {
+          // A 5xx is a RESOLVED fetch — the original `if (res.ok)` had no else,
+          // so a server outage left the board looking live while showing times
+          // from minutes or hours ago. "unavailable", not "offline": this fires
+          // for our own broken server as readily as for the worker's 503.
+          setStale({ at: lastGoodRef.current, reason: "unavailable" });
         }
       } catch {
-        // keep last-known data on a failed poll
+        // Network failure: keep last-known data, but say how old it is.
+        setStale({ at: lastGoodRef.current, reason: "offline" });
       }
     }
     function startPoll() {
@@ -450,6 +518,33 @@ export function NextFerries({
           Full schedule →
         </Link>
       </div>
+
+      {/* E13 transport freshness — "how old is this copy of the page?". That is a
+          different question from the !live note at the bottom of this component,
+          which answers "is the WSDOT feed live?". Both can legitimately show at
+          once offline, and the duplicated wsdot link is deliberate: do not dedupe
+          them. Conditionally rendered rather than always-mounted sr-only, because
+          the notify region below is already aria-live="polite" and two polite
+          regions double-announce. */}
+      {stale && (
+        <p role="status" className={`mt-3 rounded-lg px-3 py-2 text-sm ${t.stale}`}>
+          {stale.reason === "offline"
+            ? `Offline — saved times as of ${savedAtLabel(stale.at, now)}.`
+            : `Can’t reach live times — saved times as of ${savedAtLabel(stale.at, now)}.`}{" "}
+          Not live; confirm at{" "}
+          <a
+            href="https://wsdot.wa.gov/travel/washington-state-ferries"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={t.noteLink}
+          >
+            wsdot.wa.gov/ferries
+          </a>
+          {/* Only the offline wording may promise that going back online fixes
+              it — when it's our server that's down, it won't. */}
+          {stale.reason === "offline" ? " when you’re back online." : "."}
+        </p>
+      )}
 
       {/* The SR-104 boarding-pass line is a Kingston-DEPARTURE thing. Across the
           water you board at Edmonds, so it doesn't apply — hide it on that side. */}

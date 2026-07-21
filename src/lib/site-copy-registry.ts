@@ -639,6 +639,15 @@ export const COPY_BLOCKS = [
     multiline: true,
     fallback: "Thank you! Answers like yours help fund the events and trails you came for. Enjoy Kingston. 🌲",
   },
+  {
+    // E13: shown instead of survey.thankyou when the answer went to the
+    // offline outbox — it is already saved on the device and replays later.
+    key: "survey.queued",
+    page: "Visitor survey (client)",
+    label: "Thank-you message (answer queued offline)",
+    multiline: true,
+    fallback: "Saved — we'll send it when you're back online.",
+  },
   // Map switcher (client)
   {
     key: "mapswitcher.empty",
