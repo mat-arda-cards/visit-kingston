@@ -116,6 +116,14 @@ export default async function AboutPage() {
               your data.
             </Callout>
           </div>
+          <p className="mt-4 text-sm text-ink-soft">
+            The full, versioned details — including our My Health My Data Act posture, the
+            retention schedule, and how to see or delete your data — are on our{" "}
+            <Link href="/privacy" className="font-medium underline">
+              privacy page
+            </Link>
+            , the normative version of everything summarized here.
+          </p>
         </Card>
       </Section>
 

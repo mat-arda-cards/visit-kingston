@@ -854,6 +854,8 @@ Things a **person** (mostly the Chamber) must do — no code involved.
 | 12 | **Constant Contact takeover (Mat)** — when the CC export work is set up: inventory which CC lists GrowthZone auto-fills (Contacts → Lists), gather whatever access is needed, export the GZ email/newsletter templates at the same time, and stand up the app→CC list-export runbook (docs/ROLLOFF-GROWTHZONE.md §3). | Mat, with Chamber CC login |
 | 13 | **Name the on-call secondary contact (the Chamber board designee)** — fill in name/phone/email in [`docs/runbooks/ALERTS.md`](runbooks/ALERTS.md), add them as an UptimeRobot alert contact, and grant Render dashboard access. Bus-factor: someone's phone must ring when Mat is unavailable (UE-20 / FR-A29). | Chamber board + Mat |
 | 14 | **Create the free MaxMind GeoLite2 account + license key** for visitor-origin geo on `/admin`, then set `MAXMIND_LICENSE_KEY` on Render — [`docs/runbooks/GEOIP.md`](runbooks/GEOIP.md). Optional: analytics geography shows "Unknown" without it, nothing else changes. | Mat |
+| 15 | **Chamber/legal review of the privacy notice and accessibility statement** (E11) — read through `/privacy` and `/accessibility` before treating them as settled; in particular **verify the ADA small-entity compliance deadline date before citing it** anywhere (the accessibility page deliberately does not state a date). This item stays OPEN until reviewed. | Mat + Chamber (+ counsel if available) |
+| 16 | **Confirm the E11 retention windows** are what the Chamber wants on the public page (k=5 distinct sessions; geo-ping 90 days→rollup; page/link 25 months; survey 36 months; hunt submissions+photos 12 months; request contacts scrubbed at resolution). Changing any is a notice-version bump. | Mat + Chamber |
 
 ---
 
