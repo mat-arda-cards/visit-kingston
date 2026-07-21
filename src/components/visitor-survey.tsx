@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { EditableText } from "@/lib/copy-context";
+import { submitOrQueue } from "@/lib/outbox";
 
 /** Keep a number input inside its own min/max — an out-of-range value used to
  *  be submitted and then silently dropped by /api/survey (E14). */
@@ -33,6 +34,8 @@ export function VisitorSurvey() {
   const [lodgingNights, setLodgingNights] = useState(1);
   const [lodgingType, setLodgingType] = useState<string>();
   const [partySize, setPartySize] = useState(2);
+  // E13: true when the answer went to the offline outbox instead of the wire.
+  const [queued, setQueued] = useState(false);
 
   // E14: advancing a step unmounts the button that was just pressed, which
   // dropped focus to <body> and announced nothing. The step panel is a polite
@@ -54,23 +57,26 @@ export function VisitorSurvey() {
 
   if (!visible) return null;
 
-  async function submit(extra: { overnight: boolean; withDetails?: boolean }) {
+  async function submit(extra: { band?: string; overnight: boolean; withDetails?: boolean }) {
+    // E13 bug fix: `band` is threaded in explicitly because the "local" option
+    // submits in the SAME TICK as its setDistanceBand() — the closed-over state
+    // is still undefined there, JSON.stringify drops the field, and the route
+    // 400s it. One of the five answers has been silently discarded since the
+    // survey shipped. The other two call sites submit a tick later, so the
+    // state read is correct for them and stays the fallback.
     const payload = {
-      distanceBand,
+      distanceBand: extra.band ?? distanceBand,
       overnight: extra.overnight,
       ...(extra.withDetails ? { lodgingNights, lodgingType, partySize } : {}),
     };
+    // Set before the network call, exactly as before: a visitor who answers
+    // offline must never be re-prompted, so this must not depend on delivery.
     localStorage.setItem("vk-survey-done", "1");
     setStep("done");
-    try {
-      await fetch("/api/survey", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      // best-effort; never bother the visitor about it
-    }
+    // E13: submitOrQueue never throws — offline answers land in the outbox and
+    // are replayed later under the same idempotency key.
+    const result = await submitOrQueue("/api/survey", payload);
+    if (result.status === "queued") setQueued(true);
   }
 
   function dismiss() {
@@ -124,7 +130,8 @@ export function VisitorSurvey() {
                 onClick={() => {
                   setDistanceBand(o.value);
                   if (o.value === "local") {
-                    submit({ overnight: false });
+                    // Pass the band directly — see the note in submit().
+                    submit({ band: o.value, overnight: false });
                   } else {
                     setStep("overnight");
                   }
@@ -230,18 +237,30 @@ export function VisitorSurvey() {
           </div>
         )}
 
-        {step === "done" && (
-          // Contrast: this card's own fill is bg-seaglass/20 and it sits on the
-          // bare page (Section adds no background), so the text composites over
-          // #edf6fb — where text-fern is 4.39–4.45:1, under AA. text-ink is
-          // 13.96:1, the same repair E14 made on the ferry board for fern on a
-          // pale blue tint. Static axe never caught this because the node only
-          // exists after the survey is submitted.
-          <EditableText
-            as="p"
-            className="font-medium text-ink"
-            copyKey="survey.thankyou"/>
-        )}
+        {/* Two separate self-closing elements, not one with a computed copyKey:
+            tests/unit/site-copy-registry.test.ts only resolves literal keys on
+            self-closing <EditableText … /> elements, and a ternary inside
+            copyKey= reads as a dynamic key and fails CI (E13).
+
+            Contrast: this card's own fill is bg-seaglass/20 and it sits on the
+            bare page (Section adds no background), so the text composites over
+            #edf6fb — where text-fern is 4.39–4.45:1, under AA. text-ink is
+            13.96:1, the same repair E14 made on the ferry board for fern on a
+            pale blue tint. Static axe never caught this because the node only
+            exists after the survey is submitted. Both branches below carry the
+            repair — E13 authored them as text-fern before E14 measured it. */}
+        {step === "done" &&
+          (queued ? (
+            <EditableText
+              as="p"
+              className="font-medium text-ink"
+              copyKey="survey.queued"/>
+          ) : (
+            <EditableText
+              as="p"
+              className="font-medium text-ink"
+              copyKey="survey.thankyou"/>
+          ))}
       </div>
     </div>
   );
