@@ -29,9 +29,14 @@ export default function PrivacyPage() {
           <ul className="space-y-2 text-sm text-ink-soft">
             <li>No accounts, no tracking cookies, no third-party analytics or ad tech.</li>
             <li>
-              We never collect consumer health data. Location is used only when you tap a location
-              feature, only with your permission, and is stored as a neighborhood name — never a
-              coordinate.
+              We never collect consumer health data. For <strong>visitor analytics</strong>, when
+              you use the &ldquo;what&rsquo;s open near me&rdquo; feature we store only the
+              neighborhood your location falls in — never a coordinate.
+            </li>
+            <li>
+              The one exception is the <strong>scavenger hunt</strong>: a check-in you choose to
+              submit includes your photo and, if you allow it, your precise location. Those are sent
+              to the hunt organizers and kept for 12 months (see the schedule below).
             </li>
             <li>
               We never record visits to food or health assistance resources — those taps are
@@ -56,11 +61,13 @@ export default function PrivacyPage() {
           </p>
           <ul className="mt-3 space-y-2 text-sm text-ink-soft">
             <li>
-              <strong>Location is opt-in and session-only.</strong> The &ldquo;what&rsquo;s open
-              near me&rdquo; feature asks before it uses your location, and only after you accept
-              the browser&rsquo;s own permission prompt. We classify the reading into a named
-              neighborhood on the server and immediately discard the coordinates — only the
-              neighborhood bucket is stored, and only in aggregate.
+              <strong>Analytics location is opt-in and area-only.</strong> The &ldquo;what&rsquo;s
+              open near me&rdquo; feature asks before it uses your location, and only after you
+              accept the browser&rsquo;s own permission prompt. We classify the reading into a named
+              neighborhood on the server and immediately discard the coordinates — for analytics,
+              only the neighborhood bucket is stored, and only in aggregate. (The scavenger hunt is
+              separate — see below — because there the precise check-in is content you choose to
+              send.)
             </li>
             <li>
               <strong>We never track use of food or health resources.</strong> Taps on
@@ -106,12 +113,17 @@ export default function PrivacyPage() {
       <Section title="Consent, and how to withdraw it">
         <Card>
           <p className="text-sm text-ink-soft">
-            Before the app uses your device location, it asks — with a plain description of what
-            happens (it sorts a list by distance and adds one anonymous neighborhood-level count to
-            Kingston&rsquo;s visitor stats). Declining loses nothing: the list still works, sorted
-            by walking time from the ferry dock. You can withdraw consent any time by declining the
-            next prompt or clearing your browser&rsquo;s site data; nothing about you persists
-            between sessions to withdraw.
+            Before the analytics feature uses your device location, it asks — with a plain
+            description of what happens (it sorts a list by distance and adds one anonymous
+            neighborhood-level count to Kingston&rsquo;s visitor stats). Declining loses nothing:
+            the list still works, sorted by walking time from the ferry dock. You can withdraw
+            consent any time by declining the next prompt or clearing your browser&rsquo;s site
+            data; for analytics, nothing tied to you persists between sessions.
+          </p>
+          <p className="mt-3 text-sm text-ink-soft">
+            The scavenger hunt is different: a check-in you submit is content you send to the hunt
+            organizers on purpose, so it is kept for 12 months (see the schedule above). To have a
+            submission removed sooner, use the delete form below.
           </p>
         </Card>
       </Section>

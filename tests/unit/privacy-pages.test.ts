@@ -34,6 +34,23 @@ describe("privacy page", () => {
     expect(html).toContain("membership records system");
     expect(html).toContain("QuickBooks");
   });
+
+  it("renders the access/delete intake form and the consent/withdraw section", () => {
+    // The form's kind options + contact field must be present (not just linked).
+    expect(html).toContain("See my data");
+    expect(html).toContain("Delete my data");
+    expect(html).toContain("How can we reach you");
+    expect(html.toLowerCase()).toContain("withdraw");
+  });
+
+  it("does NOT overclaim: the hunt precise-location exception is disclosed, not contradicted", () => {
+    // The blanket "never a coordinate" must be scoped — the page must also
+    // disclose that scavenger-hunt check-ins keep precise location 12 months
+    // (matching the retention table + /about), or the notice contradicts itself.
+    expect(html.toLowerCase()).toContain("scavenger hunt");
+    expect(html).toContain("precise");
+    expect(html).toContain("12 months");
+  });
 });
 
 describe("accessibility page", () => {

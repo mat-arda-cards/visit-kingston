@@ -6,7 +6,7 @@
 // you type here is used only to answer you and is deleted once the request
 // is resolved.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Kind = "access" | "delete" | "records";
 
@@ -26,6 +26,15 @@ export function PrivacyRequestForm() {
   const [note, setNote] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [message, setMessage] = useState("");
+  const doneRef = useRef<HTMLParagraphElement>(null);
+
+  // Move focus to the confirmation on success — otherwise the focused submit
+  // button unmounts and focus falls to <body>, and a status region inserted
+  // already-populated is not reliably announced. Focusing it does both:
+  // the confirmation is read AND keyboard focus lands somewhere sensible.
+  useEffect(() => {
+    if (state === "done") doneRef.current?.focus();
+  }, [state]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +62,13 @@ export function PrivacyRequestForm() {
 
   if (state === "done") {
     return (
-      <p className="rounded-lg bg-seaglass/30 p-4 text-sm text-sound-deep" role="status">
+      <p
+        ref={doneRef}
+        tabIndex={-1}
+        role="status"
+        aria-live="polite"
+        className="rounded-lg bg-seaglass/30 p-4 text-sm text-sound-deep outline-none"
+      >
         {message}
       </p>
     );
