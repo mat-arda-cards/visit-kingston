@@ -77,6 +77,8 @@ working copy's `.env.local` — reference that, don't reprint secrets.
 | `SETUP_TOKEN` | Only to bootstrap the first admin (locally or in production) — `POST /api/auth/setup` 403s fail-closed without it | Any string you choose, e.g. `openssl rand -hex 16`. Only consulted while zero users exist (`hasAnyUsers()` is checked first) — once an admin exists, it's never read again. Set it in `.env.local` before running `/portal/setup` on a fresh `.data/`; on Render it's `generateValue: true`. |
 | `DATABASE_URL` | **Yes since E05** — structured data (listings, events, auth, …) lives in Postgres; `next dev` pages fail without it. Images/photos stay on disk under `DATA_DIR`. | A throwaway local Postgres (`docker run -e POSTGRES_PASSWORD=ci -p 5432:5432 postgres:16` → `postgres://postgres:ci@127.0.0.1:5432/postgres`) or a personal Neon dev branch. Migrations under `db/migrations/` apply automatically at server start. **Never point local dev at the production database.** |
 | `WORKLIST_SWEEP_TOKEN` | No — only for the E08 staleness-sweep cron; the sweep also runs from any admin session, and unset simply disables the token path (fail-closed, never open) | `openssl rand -hex 32`, set on Render (both services) and in whatever scheduler calls `POST /api/admin/worklist/sweep` with `Authorization: Bearer …` — see §5 "Worklist & moderation". |
+| `EVENTS_INGEST_TOKEN` | No — only for the E12 hourly events-ingest cron (`render.yaml` `events-ingest`); ingest also runs from any admin session ("Sync now" on `/admin/events-sources`). Fail-closed like the sweep token: production token callers get 503 while it's unset; `next dev` is open without it. | `openssl rand -hex 32`, set on Render (web service + the `events-ingest` cron; same value) — see §5 "Unified events calendar & ingest". |
+| `AMS_CALENDAR_FEED_URL` | No — optional staff-generated GrowthZone whole-calendar iCal URL (§9 item 6b). While unset the ingest scrapes per-event `.ics` files instead. Transitional: the whole GrowthZone source ends ~April 2027 (docs/adr/ADR-0005-events-canonical-source.md). | Chamber staff mint it in the GrowthZone back office (Events → Calendars settings → "Calendar Feed"); paste into Render (both services) or the `calendar-sources` record. |
 
 **Remaining Phase-2 (Vercel) vars** — `BLOB_READ_WRITE_TOKEN`,
 `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` — are **not** set locally or
@@ -447,6 +449,49 @@ has never been edited) carry no database row yet, so the sweep skips them
 until their first edit/verify overlays them — the §6 quarterly hand-check
 still owns those.
 
+### Unified events calendar & ingest (E12)
+
+**What runs:** an hourly Render cron (`render.yaml`, service `events-ingest`) POSTs the
+token-gated `/api/events/ingest`, which fetches every **enabled** calendar source
+sequentially (politely: ≥300 ms spacing, ≤60 iCal fetches/run), mirrors the results into
+the `external-events` store (idempotent — an unchanged feed writes nothing; events that
+left the feed tombstone), and stamps a last-run report per source. Ingest runs whether or
+not the unified-calendar flag is on — data flows dark; only render paths are flag-gated.
+
+**The control room is `/admin/events-sources`:** per-source enable/disable toggles (no
+deploy needed), last-run reports, "Sync now", the dedupe review ("not a duplicate"
+verdicts), the trusted-org auto-publish flags, and the unified-calendar go-live switch
+(E15's launch-cutover call — coordinate before flipping it in production).
+
+**Reading a last-run report:** `fetched/parsed/skipped` count HTTP requests, usable
+events, and deliberately-excluded ones (unpublished, hidden, soft-404s); `+/~/−` are
+store creates/updates/tombstones. Errors listed there are fail-soft records, not crashes
+— a dead subdomain or a soft-404 shows up here and the other sources still sync.
+
+**When the explorekingstonwa Tribe feed wakes up** (it has returned `total: 0` on every
+probe through 2026-07-20): nothing to deploy — the source is enabled-but-empty-tolerant,
+so events flow in on the next hourly run. Check the dedupe review afterward.
+
+**GrowthZone end-of-life (~April 2027, R3 freeze / cancellation —
+docs/adr/ADR-0005-events-canonical-source.md):** disabling the `ams-ical` source on
+`/admin/events-sources` is the whole procedure — its events drop from the merged calendar
+on the next read, no deploy. Actually flipping it off is an **R4 migration-completeness
+gate item** (roll-off plan §4), not something to do early. If the subdomain dies first,
+ingest fails soft (truth-triple rejections in the report) — disable the source to quiet it.
+At R4 the entire business.kingstonchamber.com subdomain retires and the kingstonchamber.com
+WordPress site repoints its events links/widgets at this app's `/api/feeds/events` and
+`public/embed/kingston-events.js` — those surfaces are cutover-critical (feed contract is
+additive-only).
+
+**Quarterly:** `npm run events:probe` re-checks all three sources (truth-triple, soft-404,
+whole-calendar candidates) and rewrites `docs/adr/events-source-probe.json`; a changed
+answer is a `calendar-sources` config change, not a code change.
+
+**Public suggest intake:** `/events/suggest` (flag-gated) → always `status: pending` in
+the moderation queue — the anonymous path has no bypass. Trusted-org auto-publish (the
+one bypass, both portal event routes) is set per-org on `/admin/events-sources`; every
+bypassed write is still audit-rowed.
+
 ### History & restore (E09)
 
 Nothing an admin does in the editors can be lost. Every save, delete, and
@@ -662,7 +707,12 @@ is authoritative):
 - **Run the restore drill and log it** — [`docs/runbooks/RESTORE-DRILL.md`](runbooks/RESTORE-DRILL.md). Mode A (filesystem) is non-programmer-runnable; a backup you've never restored is a hope, not a backup.
 - **Confirm the on-call secondary contact and send a test alert** — [`docs/runbooks/ALERTS.md`](runbooks/ALERTS.md). The Chamber board designee's phone must actually ring when Mat is away.
 - **Check the GeoLite2 status** on `/admin/ops` (WARN = a stale/failing self-refresh, usually an expired key) — [`docs/runbooks/GEOIP.md`](runbooks/GEOIP.md).
-- **Rotate `BACKUP_TOKEN`, `FERRY_OBSERVE_TOKEN`, and `WORKLIST_SWEEP_TOKEN`** — see §12 Secret rotation.
+- **Rotate `BACKUP_TOKEN`, `FERRY_OBSERVE_TOKEN`, `WORKLIST_SWEEP_TOKEN`, and `EVENTS_INGEST_TOKEN`** — see §12 Secret rotation.
+- **Run `npm run events:probe`** (E12 source drift alarm) — re-checks the three event
+  sources and rewrites `docs/adr/events-source-probe.json`; a changed answer (the
+  explorekingstonwa feed filling, the whole-calendar URL arriving/dying, the GrowthZone
+  subdomain retiring) is a `calendar-sources` toggle on `/admin/events-sources`, not a
+  code change — see §5 "Unified events calendar & ingest".
 
 Since E08 the staleness sweep (§5 "Worklist & moderation") files Re-verify
 queue items for overlay-backed records automatically — this hand-check
@@ -946,6 +996,7 @@ plan) — no new spend.
 | `BACKUP_TOKEN` | Quarterly (align with the §6 quarterly checklist) | `openssl rand -hex 32` → update the Render dashboard env var on **both** services → update the GitHub Actions repo secret (`gh secret set BACKUP_TOKEN`, value piped via stdin, never a CLI arg) → no redeploy required (runtime var) |
 | `FERRY_OBSERVE_TOKEN` | Quarterly | Same procedure as `BACKUP_TOKEN` above — one value shared by both ferry cron workflows |
 | `WORKLIST_SWEEP_TOKEN` | Quarterly | Same procedure — update the Render env var on **both** services and wherever the sweep cron is registered (Render Cron Job or GH Actions secret). Fail-closed: while rotated-but-unset the sweep just needs an admin session. |
+| `EVENTS_INGEST_TOKEN` | Quarterly | Same procedure — update the Render env var on the **web service AND the `events-ingest` cron service** (same value in both). Fail-closed: while rotated-but-unset, ingest still runs from "Sync now" on `/admin/events-sources`. |
 | age keypair (`BACKUP_AGE_RECIPIENT`) | Annually, or immediately on any suspicion of exposure | `age-keygen` → new **public** key becomes the repo variable `BACKUP_AGE_RECIPIENT` (`gh variable set`) → new **private** key goes to 1Password ("ExploreKingston backup age key") → **keep every old private key** — backups encrypted under a retired key can only be decrypted with it, and rotation is forward-only (old backups are never re-encrypted) |
 | `AUTH_SECRET` | Never casually — rotating logs **every** signed-in user out (see §10 "Portal login loops"). Only rotate on a real compromise. | Render dashboard env var → redeploy. Since E06 there IS per-user revocation (disable / reset / role change bump `session_version`), so rotating this is only for a compromise of the SECRET itself — to remove one person, use §5 "Off-board a volunteer". |
 

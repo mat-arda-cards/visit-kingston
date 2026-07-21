@@ -445,16 +445,23 @@ both inputs fresh (commands in the script header), then
 
 | Source | URL | Access | Cost | Status in app |
 |---|---|---|---|---|
-| **explorekingstonwa.com — The Events Calendar REST** (discovery) | https://explorekingstonwa.com/wp-json/tribe/events/v1/events | Public Tribe REST, no key — the Chamber's own site, machine-readable | Free | lowest-precedence transitional feed per docs/adr/ADR-0002-app-first-events-and-manual-exports.md (in-app > GrowthZone > Tribe) |
-| Chamber GrowthZone calendar | https://business.kingstonchamber.com/events | Public HTML; per-event iCal `/events/ICal/[slug]-[id].ics`; calendar-wide feed **absent as of 2026-07 (see docs/adr/ADR-0001-ams-ground-truth.md; per-event iCal verified live)** | Free (iCal); REST may need a paid GrowthZone quote | seeded; iCal ingest planned |
+| **explorekingstonwa.com — The Events Calendar REST** (discovery) | https://explorekingstonwa.com/wp-json/tribe/events/v1/events | Public Tribe REST, no key — the Chamber's own site, machine-readable | Free | **ingest built (E12)** — source `tribe-explorekingstonwa`, enabled-but-empty-tolerant (`total: 0` on every probe through 2026-07-20); precedence per docs/adr/ADR-0005-events-canonical-source.md (in-app > GrowthZone > Tribe, from ADR-0002) |
+| Chamber GrowthZone calendar | https://business.kingstonchamber.com/events | Public HTML; per-event iCal `/events/ICal/[slug]-[id].ics`; staff-generated whole-calendar feed URL supported once delivered (`AMS_CALENDAR_FEED_URL` / calendar-sources record — OPERATIONS §9 item 6b) | Free (iCal) | **ingest built (E12)** — source `ams-ical`, enabled, **transitional: ends at the R3 freeze / GrowthZone cancellation ~April 2027** (docs/adr/ADR-0005-events-canonical-source.md; disable = admin toggle, no deploy) |
 | Kingston Chamber WordPress (kingstonchamber.com) | /wp-json/tribe/events/v1/events | Tribe REST live but returns **0 events** — empty shell | Free | do not integrate |
-| Port of Kingston | https://portofkingston.org/wp-json/tribe/events/v1/events | Public Tribe REST, no key — ~38 events, structured | Free | planned supplement |
+| Port of Kingston | https://portofkingston.org/wp-json/tribe/events/v1/events | Public Tribe REST, no key — 32 events on 2026-07-20, structured | Free | **ingest built (E12)** — source `tribe-portofkingston`, **disabled pending Chamber sign-off** (ask-first) |
 | Visit Kitsap (county DMO) | https://visitkitsap.com/ | dates only as prose in HTML (acf empty) — push target, not pull source | Free | push target |
 | Facebook Events | https://developers.facebook.com/docs/graph-api/reference/event/ | Public events API removed 2018; scraping violates ToS | n/a | output channel only |
 
-Current state: events are **seeded** in `src/lib/data/events.ts` (overlaid by `event-store`,
-editable in the portal + admin). The app already emits its own events feed at
-`/api/feeds/events` (JSON + `?format=ics`) — see [SYNDICATION.md](SYNDICATION.md).
+Current state: **unified-calendar ingest is BUILT (E12), shipping dark.** The hourly Render
+cron (`render.yaml` `events-ingest`) mirrors enabled sources into the `external-events`
+store; the merged calendar (pure dedupe + RRULE expansion in `src/lib/events/`, precedence
+recorded in docs/adr/ADR-0005-events-canonical-source.md) renders on `/events`,
+`/api/feeds/events`, and the portal date-deconfliction lookup **only when the
+unified-calendar flag is ON** (`/admin/events-sources`; E15 flips it at launch). Flag OFF,
+those surfaces serve exactly the seeded calendar: `src/lib/data/events.ts` overlaid by
+`event-store`, editable in the portal + admin. The app emits its own events feed at
+`/api/feeds/events` (JSON + `?format=ics`) — see [SYNDICATION.md](SYNDICATION.md). Quarterly
+drift alarm: `npm run events:probe` (writes `docs/adr/events-source-probe.json`).
 
 ### Gotchas (load-bearing)
 
