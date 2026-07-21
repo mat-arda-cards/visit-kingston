@@ -13,13 +13,20 @@ import { describe, expect, it } from "vitest";
 import {
   fillSafetyText,
   SAFETY_CONTENT,
+  SAFETY_FALLBACK_TOKENS,
   SAFETY_LANG,
   SAFETY_PLACEHOLDERS,
   SAFETY_SECTION_ORDER,
+  SAFETY_TOKEN_FALLBACKS,
   safetyPlaceholdersIn,
+  safetyValues,
   type SafetySection,
   type SafetyStrings,
+  type SafetyValues,
 } from "@/lib/i18n/safety-content";
+
+/** Stand-in live values; no test here depends on the real figures. */
+const LIVE: SafetyValues = { phone: "555-0100", walkOnRoundTrip: "$9.99" };
 
 const LANGS = ["en", "es"] as const;
 
@@ -162,9 +169,107 @@ describe("EN/ES safety dictionary parity", () => {
     ).toEqual([]);
   });
 
+  it("the walk-on fare is never a literal in the dictionary", () => {
+    // Same rule as the phone above, for the same reason: the fare is editable
+    // at /admin/ferry-info → Fares, so a copy frozen in here keeps publishing
+    // last October's number on /simple and /es after the Chamber fixed it —
+    // to the readers least equipped to notice. Use {walkOnRoundTrip}.
+    const literals = LANGS.flatMap((lang) =>
+      everyString(SAFETY_CONTENT[lang])
+        .filter((s) => /\$\s?\d/.test(s.value))
+        .map((s) => `${lang}.${s.path}: ${s.value}`),
+    );
+    expect(
+      literals,
+      `Hardcoded money figure(s) — use {walkOnRoundTrip} and let the render site fill it from the fares record:\n${literals.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("every declared placeholder is actually used somewhere", () => {
+    // A declared-but-unused token is a render site filling a value nothing
+    // reads — the shape this file's guarantees are built on, quietly hollow.
+    const used = new Set(
+      LANGS.flatMap((lang) =>
+        everyString(SAFETY_CONTENT[lang]).flatMap((s) => safetyPlaceholdersIn(s.value)),
+      ),
+    );
+    const unused = SAFETY_PLACEHOLDERS.filter((t) => !used.has(t));
+    expect(unused, `Declared but never written into a string: ${unused}`).toEqual([]);
+  });
+
   it("filling a string substitutes every declared token and leaves nothing behind", () => {
-    const filled = fillSafetyText(SAFETY_CONTENT.en.help.steps[0], { phone: "555-0100" });
+    const filled = fillSafetyText(SAFETY_CONTENT.en.help.steps[0], LIVE);
     expect(filled).toContain("555-0100");
     expect(filled).not.toContain("{phone}");
+  });
+
+  it.each(LANGS)("%s reads correctly once every token is filled", (lang) => {
+    // The token is a FIGURE slot, not a sentence slot: after substitution the
+    // string must still be one plain sentence, with no stray braces and no
+    // doubled spaces where a token used to be.
+    for (const s of everyString(SAFETY_CONTENT[lang])) {
+      const filled = fillSafetyText(s.value, LIVE);
+      expect(filled, `${lang}.${s.path} left a token behind`).not.toMatch(/[{}]/);
+      expect(filled, `${lang}.${s.path} has doubled spacing`).not.toMatch(/ {2}/);
+    }
+  });
+});
+
+describe("fallback wording for a token with no live value", () => {
+  it.each(LANGS)("%s has non-empty wording for every fallback token", (lang) => {
+    for (const token of SAFETY_FALLBACK_TOKENS) {
+      const wording = SAFETY_TOKEN_FALLBACKS[lang][token];
+      expect(wording?.trim().length, `${lang}.${token} fallback is empty`).toBeGreaterThan(0);
+    }
+  });
+
+  it("the two halves are actually different text (not English pasted into es)", () => {
+    // The same tripwire the section titles carry: fallback wording is content a
+    // Spanish-speaking visitor reads, so it is translated, not copied.
+    //
+    // Widened to string on purpose. `as const satisfies` gives the two halves
+    // literal types, and TS rejects the comparison as provably false while the
+    // wordings differ — which is exactly when the test has nothing to catch.
+    // The case worth catching (the English pasted into `es`) is the case where
+    // the literals unify and this comparison becomes true.
+    const en: Record<string, string> = SAFETY_TOKEN_FALLBACKS.en;
+    const es: Record<string, string> = SAFETY_TOKEN_FALLBACKS.es;
+    const identical = SAFETY_FALLBACK_TOKENS.filter((t) => en[t] === es[t]);
+    expect(identical, `Fallback wording identical in en and es: ${identical}`).toEqual([]);
+  });
+
+  it("names no figure — the whole point is not inventing a number", () => {
+    for (const lang of LANGS) {
+      for (const token of SAFETY_FALLBACK_TOKENS) {
+        expect(SAFETY_TOKEN_FALLBACKS[lang][token], `${lang}.${token}`).not.toMatch(/\d/);
+      }
+    }
+  });
+
+  it.each(LANGS)("%s falls back only when there is no live value", (lang) => {
+    const live = safetyValues(lang, { phone: "555-0100", walkOnRoundTrip: "$11.35" });
+    expect(live.walkOnRoundTrip).toBe("$11.35");
+
+    const missing = safetyValues(lang, { phone: "555-0100", walkOnRoundTrip: null });
+    expect(missing.walkOnRoundTrip).toBe(SAFETY_TOKEN_FALLBACKS[lang].walkOnRoundTrip);
+  });
+
+  it("substitutes the fallback into a sentence that still reads", () => {
+    // "…costs the fare posted at Edmonds, and you pay it once." — the reason
+    // the English lost its trailing "in total" when the token went in.
+    const en = fillSafetyText(
+      SAFETY_CONTENT.en.walkOn.steps.find((s) => s.includes("{walkOnRoundTrip}"))!,
+      safetyValues("en", { phone: "555-0100", walkOnRoundTrip: null }),
+    );
+    expect(en).toContain(SAFETY_TOKEN_FALLBACKS.en.walkOnRoundTrip);
+    expect(en).not.toMatch(/[{}]/);
+    expect(en, "a sentence with no figure must not still promise a total").not.toMatch(/\$/);
+
+    const es = fillSafetyText(
+      SAFETY_CONTENT.es.walkOn.steps.find((s) => s.includes("{walkOnRoundTrip}"))!,
+      safetyValues("es", { phone: "555-0100", walkOnRoundTrip: null }),
+    );
+    expect(es).toContain(SAFETY_TOKEN_FALLBACKS.es.walkOnRoundTrip);
+    expect(es).not.toMatch(/[{}]/);
   });
 });

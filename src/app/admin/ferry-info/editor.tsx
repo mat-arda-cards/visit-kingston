@@ -12,13 +12,14 @@
 // saving either place persists it.
 
 import { useState } from "react";
-import type {
-  BoardingPass,
-  FareRow,
-  FerryFares,
-  FerryInfo,
-  FerryPayment,
-  Source,
+import {
+  WALK_ON_ROUND_TRIP_KEY,
+  type BoardingPass,
+  type FareRow,
+  type FerryFares,
+  type FerryInfo,
+  type FerryPayment,
+  type Source,
 } from "@/lib/data/ferry-info";
 import { Badge, Card } from "@/components/ui";
 import { Provenance } from "@/components/admin/provenance";
@@ -246,6 +247,17 @@ function FareGroupEditor({
       <div className="mt-1 space-y-3">
         {items.map((row, i) => (
           <div key={i} className="rounded-lg border border-sand p-3">
+            {/* A row other pages quote inside a sentence says so, because the
+                consequence of removing it is invisible from here: /simple and
+                /es stop naming a fare at all. The row is safe to rename and
+                reorder — the pages follow its hidden key, not its label. */}
+            {row.key === WALK_ON_ROUND_TRIP_KEY && (
+              <p className="mb-2 text-xs font-medium text-tide-deep">
+                Also quoted in a sentence on /ferry, /simple and /es. Rename or move it
+                freely; delete it and those pages say &ldquo;the fare posted at
+                Edmonds&rdquo; instead of a number.
+              </p>
+            )}
             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
               <div>
                 <label className="text-xs font-medium text-ink">What</label>
@@ -263,7 +275,9 @@ function FareGroupEditor({
                   value={row.amount}
                   onChange={(e) => set(i, { amount: e.target.value })}
                   maxLength={60}
-                  placeholder="$11.35 or Free"
+                  // Not a real fare: a placeholder showing a live figure is one
+                  // more copy of it to go stale each October.
+                  placeholder="$0.00 or Free"
                   className={inputClass}
                 />
               </div>

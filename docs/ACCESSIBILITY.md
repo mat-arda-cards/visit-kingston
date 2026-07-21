@@ -222,6 +222,14 @@ Rules:
 - **Neutral Latin-American Spanish**, held to the same §2 bar as the English.
 - **Parity is enforced** by `tests/unit/safety-content-parity.test.ts`: identical section
   sets, identical step counts, notes present in both or neither, nothing empty.
+- **No live figure is a literal.** A value the Chamber can change without a deploy is a
+  `{token}` the render site fills — `{phone}` from the copy registry, `{walkOnRoundTrip}`
+  from the E27 fares record — because a second copy frozen here keeps publishing the old
+  value to precisely the readers least able to notice. Translators still own every word
+  around the token; the substitution is a figure, never a phrase carried over from the
+  English. When a live value is unavailable the sentence uses that language's
+  `SAFETY_TOKEN_FALLBACKS` wording, which names no number rather than inventing one.
+  `tests/unit/fare-single-source.test.ts` fails if a fare figure reappears anywhere else.
 - **`/es` ships dark.** It is in `DEFAULT_HIDDEN_PAGES`, so absence of a site-pages record
   means hidden. Unhiding is an operator action after a bilingual human review — procedure in
   docs/OPERATIONS.md, "Accessibility & language".

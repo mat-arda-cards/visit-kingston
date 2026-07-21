@@ -11,8 +11,26 @@
 // site-pages record. Every one of those three states is exercised below.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { SAFETY_CONTENT, SAFETY_SECTION_ORDER } from "../../src/lib/i18n/safety-content";
+import {
+  FERRY_FARES,
+  WALK_ON_ROUND_TRIP_KEY,
+  walkOnRoundTripFare,
+  type FerryFares,
+} from "../../src/lib/data/ferry-info";
+import {
+  SAFETY_CONTENT,
+  SAFETY_SECTION_ORDER,
+  SAFETY_TOKEN_FALLBACKS,
+} from "../../src/lib/i18n/safety-content";
 import { BASE_URL } from "./config";
+
+/** The walk-on round-trip figure as shipped in code, read the same way the
+ *  pages read it — so this never drifts from what the seed actually says. */
+function seedWalkOnFare(): string {
+  const fare = walkOnRoundTripFare(FERRY_FARES as unknown as FerryFares);
+  if (!fare) throw new Error("the seed has no usable walk-on round-trip fare");
+  return fare;
+}
 
 /** Seeded by tests/server/global-setup.ts. */
 const ADMIN = { email: "ci@example.test", password: "ci-admin-password" };
@@ -31,6 +49,45 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;");
+}
+
+/**
+ * The document with every <script> block removed — i.e. what a visitor can
+ * actually read.
+ *
+ * WHY THIS EXISTS. safety-essentials.tsx renders each step as
+ * `<li key={step}>{fillSafetyText(step, values)}</li>`. The key is the RAW
+ * dictionary string, and React serializes element keys into the RSC flight
+ * payload that Next.js inlines in the HTML:
+ *
+ *   ["$","li","Greater Kingston Chamber of Commerce: {phone}. A person…",{…}]
+ *
+ * So `html.includes(rawStep)` is true for every step whether or not the step
+ * ever rendered, and true whether or not its {tokens} were ever substituted.
+ * Asserting against the payload is asserting that the dictionary exists, which
+ * TypeScript already guarantees. Everything below reads the visible half only.
+ */
+function visibleHtml(html: string): string {
+  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "");
+}
+
+/** The literal text around a step's `{tokens}`, longest first. Each piece must
+ *  appear in the rendered page; the token slots are filled with live values the
+ *  test has no business pinning (the Chamber edits both without a deploy). */
+function proseSegments(step: string): string[] {
+  return step
+    .split(/\{\w+\}/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 12);
+}
+
+/** Assert one dictionary step actually rendered, tokens filled. */
+function expectStepRendered(visible: string, step: string, where: string): void {
+  const segments = proseSegments(step);
+  expect(segments.length, `${where}: step has no assertable prose: ${step}`).toBeGreaterThan(0);
+  for (const segment of segments) {
+    expect(visible, `${where}: missing rendered text "${segment}"`).toContain(escapeHtml(segment));
+  }
 }
 
 async function get(path: string, cookie?: string): Promise<{ status: number; html: string }> {
@@ -128,13 +185,14 @@ describe("/es — the Spanish essentials page ships dark", () => {
   });
 
   it("renders every Spanish safety section from the dictionary", async () => {
-    const { html } = await get("/es", cookie);
+    const visible = visibleHtml((await get("/es", cookie)).html);
     for (const key of SAFETY_SECTION_ORDER) {
       const title = SAFETY_CONTENT.es[key].title;
-      expect(html, `missing Spanish safety section "${title}"`).toContain(title);
-      // …and its instructions, not just its heading.
+      expect(visible, `missing Spanish safety section "${title}"`).toContain(title);
+      // …and its instructions, not just its heading — the VISIBLE ones, with
+      // {tokens} filled, not the raw dictionary string echoed in the RSC key.
       for (const step of SAFETY_CONTENT.es[key].steps) {
-        expect(html, `missing Spanish step under "${title}": ${step}`).toContain(escapeHtml(step));
+        expectStepRendered(visible, step, `es "${title}"`);
       }
     }
   });
@@ -161,13 +219,24 @@ describe("the safety slice ships in English too", () => {
   it("/simple renders every English safety section from the same dictionary", async () => {
     const { status, html } = await get("/simple");
     expect(status).toBe(200);
+    const visible = visibleHtml(html);
     for (const key of SAFETY_SECTION_ORDER) {
       const title = SAFETY_CONTENT.en[key].title;
-      expect(html, `missing English safety section "${title}"`).toContain(title);
+      expect(visible, `missing English safety section "${title}"`).toContain(title);
       for (const step of SAFETY_CONTENT.en[key].steps) {
-        expect(html, `missing English step under "${title}": ${step}`).toContain(escapeHtml(step));
+        expectStepRendered(visible, step, `en "${title}"`);
       }
     }
+  });
+
+  it("shows a visitor no unfilled {token}", async () => {
+    // The failure this catches is literal braces on the page: a render site
+    // that forgot a value, or a translator who invented a token. Nothing in
+    // the visible half of /simple should look like {this}. (/es gets the same
+    // assertion in the fares describe below, where a cookie is already in hand.)
+    const visible = visibleHtml((await get("/simple")).html);
+    const leaked = [...visible.matchAll(/\{\w+\}/g)].map((m) => m[0]);
+    expect(leaked, "unsubstituted placeholder(s) rendered on /simple").toEqual([]);
   });
 
   it("never promises a last boat — the one thing the return-trip guidance must not do", async () => {
@@ -210,5 +279,87 @@ describe("/accessibility — the accessibility statement", () => {
     const { status, html } = await get("/");
     expect(status).toBe(200);
     expect(html).toContain('href="/accessibility"');
+  });
+});
+
+// E14 × E27 — the October chore, proven end to end.
+//
+// tests/unit/fare-single-source.test.ts proves no page carries its own copy of
+// the walk-on fare. That is a statement about the SOURCE. This is the statement
+// about the RUNNING SITE, and it is the one the Chamber actually cares about:
+// an admin edits the fare at /admin/ferry-info → Fares, and the plain-language
+// pages say the new number without anyone touching code. Before this epic they
+// did not, and docs/OPERATIONS.md §6 carried the caveat every October.
+describe("the walk-on fare on /es follows the fares record, not the code", () => {
+  let cookie = "";
+  const EDITED = "$12.05";
+
+  /** The seed doc with the keyed walk-on row's amount replaced. */
+  function faresDocWith(amount: string): Record<string, unknown> {
+    const seed = FERRY_FARES as unknown as FerryFares;
+    return {
+      ...seed,
+      walkOn: seed.walkOn.map((r) =>
+        r.key === WALK_ON_ROUND_TRIP_KEY ? { ...r, amount } : { ...r },
+      ),
+    };
+  }
+
+  async function saveFares(amount: string): Promise<void> {
+    const res = await fetch(BASE_URL + "/api/admin/ferry-info", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ id: "fares", doc: faresDocWith(amount) }),
+    });
+    expect(res.ok, `saving fares failed with ${res.status}`).toBe(true);
+  }
+
+  beforeAll(async () => {
+    cookie = await adminCookie();
+  });
+
+  afterAll(async () => {
+    // Server test files share one server and one database (fileParallelism:
+    // false), so put the seed figure back rather than leaving an edited fare
+    // for whatever runs next.
+    if (cookie) await saveFares(seedWalkOnFare());
+  });
+
+  it("shows the seed figure before anyone edits it", async () => {
+    const visible = visibleHtml((await get("/es", cookie)).html);
+    expect(visible, "the Spanish page should quote the seeded walk-on fare").toContain(
+      seedWalkOnFare(),
+    );
+  });
+
+  it("shows the edited figure after an admin saves a new fare — no deploy", async () => {
+    await saveFares(EDITED);
+
+    // /es renders on demand, so the edit is visible on the next request.
+    const visible = visibleHtml((await get("/es", cookie)).html);
+    expect(visible, "the Spanish page must quote the edited fare").toContain(EDITED);
+    expect(
+      visible,
+      "the OLD figure is still on the page — something is still hardcoding it",
+    ).not.toContain(seedWalkOnFare());
+
+    // And the Spanish sentence around it is still the translator's, not an
+    // English one substituted wholesale — the token fills a FIGURE only.
+    expect(visible).toContain("El viaje de ida y vuelta a pie cuesta");
+    expect(visible).toContain("y se paga una sola vez");
+  });
+
+  it("names no figure at all when the record has no usable one", async () => {
+    // "Free" is a legitimate thing for the Chamber to type in the fare table,
+    // and nonsense inside "…cuesta ___, y se paga una sola vez." The page must
+    // fall back to wording, never to a number nobody entered.
+    await saveFares("Free");
+
+    const visible = visibleHtml((await get("/es", cookie)).html);
+    expect(visible).toContain(SAFETY_TOKEN_FALLBACKS.es.walkOnRoundTrip);
+    expect(visible, "a stale figure resurfaced when the live one was unusable").not.toContain(
+      seedWalkOnFare(),
+    );
+    expect([...visible.matchAll(/\{\w+\}/g)].map((m) => m[0])).toEqual([]);
   });
 });

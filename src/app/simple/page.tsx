@@ -4,13 +4,15 @@ import Link from "next/link";
 import { SafetyEssentials } from "@/components/safety-essentials";
 import { SimpleModeToggle } from "@/components/simple-mode-toggle";
 import { PageHeader, Section } from "@/components/ui";
+import { walkOnRoundTripFare } from "@/lib/data/ferry-info";
 import { getFerryStatusSnapshot } from "@/lib/ferry-status";
-import { SAFETY_CONTENT } from "@/lib/i18n/safety-content";
+import { SAFETY_CONTENT, safetyValues } from "@/lib/i18n/safety-content";
 import {
   assertPageVisible,
   getEffectiveHiddenPaths,
   HiddenPageBanner,
 } from "@/lib/page-visibility";
+import { getFerryInfo } from "@/lib/stores/ferry-info-store";
 import { copyText, getCopyOverrides } from "@/lib/stores/site-store";
 import { formatPacificDate, formatPacificTime } from "@/lib/time";
 import type { Sailing } from "@/lib/types";
@@ -87,8 +89,11 @@ function BoatColumn({
 
 export default async function SimplePage() {
   const hiddenPreview = await assertPageVisible("/simple");
-  const [ferry, copy, hiddenPaths] = await Promise.all([
+  const [ferry, ferryInfo, copy, hiddenPaths] = await Promise.all([
     getFerryStatusSnapshot(),
+    // E27's admin-editable fares record. A store read like getCopyOverrides()
+    // below — server-side, no cookie, so the page stays static-friendly.
+    getFerryInfo(),
     getCopyOverrides(),
     getEffectiveHiddenPaths(),
   ]);
@@ -183,8 +188,19 @@ export default async function SimplePage() {
 
       {/* E14 (FR-92): the English half of the safety slice. /es renders the
           Spanish half of this exact dictionary through the same component, so
-          the two pages cannot drift apart in structure or coverage. */}
-      <SafetyEssentials strings={SAFETY_CONTENT.en} values={{ phone }} />
+          the two pages cannot drift apart in structure or coverage.
+
+          `values` fills the dictionary's {tokens}: the Chamber phone from the
+          copy registry, and the walk-on fare from E27's fares record — both
+          Chamber-editable without a deploy, so neither is a literal in the
+          dictionary. */}
+      <SafetyEssentials
+        strings={SAFETY_CONTENT.en}
+        values={safetyValues("en", {
+          phone,
+          walkOnRoundTrip: walkOnRoundTripFare(ferryInfo.fares),
+        })}
+      />
 
       <Section title="Talk to a person">
         <div className="rounded-2xl border border-sand bg-white p-5">

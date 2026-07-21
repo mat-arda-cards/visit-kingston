@@ -953,7 +953,7 @@ Dated, concrete, grounded in the seed files. Put these on a real calendar.
 |---|---|---|
 | **2026-09-12** | Kitsap Transit GTFS feed **S1000066 expires** (valid 2026-06-14 → 2026-09-12). The bundled fast-ferry times are hardcoded from it — refresh when the fall schedule drops (`https://pride.kitsaptransit.com/gtfs/google_transit.zip`) or the app shows a stale summer schedule. Also re-check the Saturday seasonal window (currently months 5–9). | `src/lib/kitsap.ts` |
 | **~2026-09-14** | Friends & Neighbors Brewing resumes Monday 4–8 pm hours (closed Mondays until MNF returns). Update the hours string (or have them edit via the portal). | `src/lib/data/restaurants.ts` |
-| **October 2026** | WSF typically changes fares each October; Kitsap Transit fares also historically take effect Oct 1. **Since E27 the /ferry fares are admin-editable — no deploy:** edit them at **`/admin/ferry-info` → Fares** (walk-on, drive-on, fast ferry), and update the "rates as of" line in the same save. **But two surfaces still hardcode the walk-on fare and DO need a code change:** `en.walkOn` AND `es.walkOn` in the E14 safety dictionary, which feed `/simple` and `/es` — the two pages with the least-sophisticated readers. Do both halves in the same week, or they will disagree. | `/admin/ferry-info` → Fares (seed: `src/lib/data/ferry-info.ts`); `src/lib/i18n/safety-content.ts` (`en.walkOn`, `es.walkOn`) |
+| **October 2026** | WSF typically changes fares each October; Kitsap Transit fares also historically take effect Oct 1. **Fares are admin-editable — no deploy:** edit them at **`/admin/ferry-info` → Fares** (walk-on, drive-on, fast ferry) and update the "rates as of" line in the same save. The **walk-on round-trip** figure also feeds the sentences on `/ferry`, `/simple` and `/es`; all three follow that row, so one save fixes every surface. Do NOT hand-edit a fare into `src/lib/i18n/safety-content.ts` — a test fails on purpose if you do. **Still needs a code change:** the fast-ferry `$2`/`$13` prose on `/ferry` and in `src/lib/kitsap.ts`, and the `$27` drive-on badge — the inventory is `KNOWN_DUPLICATES` in `tests/unit/fare-single-source.test.ts`, with a reason for each. | `/admin/ferry-info` → Fares (seed: `src/lib/data/ferry-info.ts`); leftovers listed in `tests/unit/fare-single-source.test.ts` |
 | **Oct 1–30, 2026** (annually; watch kitsap.gov/das each summer — the window has moved) | Kitsap County **LTAC** grant RFP for 2027 funds. One-month window; late = rejected. Export the survey/analytics summaries from `/admin` for the application. | DATA_SOURCES §12 |
 | **Annually** (pick a fixed month once E03's migration date is known) | Rotate the **age backup keypair** (`BACKUP_AGE_RECIPIENT`) — see §12 Secret rotation. Keep every retired private key; old backups need them. | 1Password "ExploreKingston backup age key" |
 | **Monthly** (once the E11 retention cron is scheduled) | Check the last `retention-purge` audit row in `/admin/audit` — a silent cron failure is retention drift: the public privacy page keeps promising windows nothing is enforcing. No row since the last calendar month = investigate the workflow run. | `/admin/audit` (action `retention-purge`); `.github/workflows/privacy-retention.yml` |
@@ -1303,6 +1303,13 @@ The procedure, in order:
 
 1. **Print the strings.** They are all in `src/lib/i18n/safety-content.ts`, the `es` half —
    six sections, hand-authored, no machine translation anywhere in the path.
+   Two sentences read `{phone}` and `{walkOnRoundTrip}` instead of a value. That is
+   correct: those are live figures the Chamber edits without a deploy (the phone in
+   Admin → Site content, the fare at `/admin/ferry-info` → Fares), and freezing either
+   into this file is how the page starts publishing a number that is no longer true.
+   Review the wording AROUND them, and review `SAFETY_TOKEN_FALLBACKS.es` in the same
+   file — that is what the sentence says when the fare is unavailable, so it is a
+   sentence a visitor can really see. Step 4 shows the filled version.
 2. **Find a reviewer.** A bilingual Spanish/English speaker, ideally one who has actually
    stood in the SR 104 ferry line. A Chamber member or volunteer is fine; this does not need
    a professional translator, it needs someone who will catch a sentence that is technically
@@ -1319,7 +1326,8 @@ The procedure, in order:
    visitors get a 404. Read it on a phone.
 5. **Fix anything the reviewer flags** — edits to the dictionary are a code change and a
    deploy; the page headings and the intro are copy-registry blocks and can be edited live
-   in Admin → Site content.
+   in Admin → Site content, and a wrong **fare** is neither: fix it at
+   `/admin/ferry-info` → Fares and both languages follow (§14.1).
 6. **Unhide it.** Admin → Site content → Pages → "Kingston en español" → press the toggle so
    it reads **Visible**. That writes an explicit `{ id: "/es", hidden: false }` record, which
    is what makes the page public. The `/es` link appears in the site footer and on
@@ -1389,12 +1397,33 @@ note }` rows. Amount is free text, so "Free" and "$11.35" both work.
 - The senior/disability row is deliberately its own line naming the **RRFP**
   (Regional Reduced Fare Permit). Keep it that way — it was buried in a
   sentence before E27 and the riders it applies to did not find it.
-- **`/simple` and `/es` still hardcode the walk-on fare** in the E14 safety
-  dictionary and need a code change. §6 spells this out. Do not let the two
-  halves drift.
 - The seed lives in `src/lib/data/ferry-info.ts` (`FERRY_FARES`). A test pins
   the exact figures, so a code-side change to a fare fails CI on purpose —
   that is a prompt to confirm the new number, not a bug.
+
+#### The walk-on round-trip row is quoted in sentences elsewhere
+
+`/ferry`, `/simple` and `/es` don't just list this fare in the table — they say
+it mid-sentence ("a round trip on foot costs ___, and you pay it once"). All
+three read the **same row**, so editing it here fixes all three at once. Two
+things follow from that, and the editor says both on the row itself:
+
+- **Rename or reorder it freely.** The pages follow a hidden stable key, not the
+  label or the position. This is why renaming "Round trip on foot" is safe.
+- **Delete it, or type something that isn't a single figure** (`Free`,
+  `$27.00 + $11.35/passenger`), **and those sentences name no number** — they
+  read "the fare posted at Edmonds" / "la tarifa publicada en Edmonds" instead.
+  That is deliberate: publishing a figure nobody confirmed is worse than
+  publishing none, and the readers of `/simple` and `/es` are the least likely
+  to catch a wrong one. The fare **table** still shows exactly what you typed.
+
+Before this, `/simple` and `/es` carried their own hardcoded copy of the fare in
+both languages, so the October edit here fixed `/ferry` and left those two
+showing last year's number until someone changed code.
+`tests/unit/fare-single-source.test.ts` now fails if any page grows its own copy
+again, and lists in `KNOWN_DUPLICATES` the fare figures still hardcoded in
+`/ferry` prose (the `$2`/`$13` fast-ferry lines and the `$27` drive-on badge) —
+those still need a deploy.
 
 ### 14.2 Restrooms, water & amenities
 

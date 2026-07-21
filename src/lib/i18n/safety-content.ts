@@ -48,16 +48,70 @@ export interface SafetyStrings {
 /**
  * Tokens the RENDER SITE substitutes, written `{token}` in the strings below.
  *
- * The Chamber's own phone number must never be a literal here. It is a copy
- * registry block (`contact.phone.number`) precisely so the office can change it
- * from Admin → Site content without a deploy; a second copy frozen into this
- * file would keep publishing the old number on /simple and /es after they did.
- * Agency numbers are different — they are literals below, with sources, because
- * the Chamber does not own them and must not be able to edit them.
+ * The rule both tokens exist for: a figure the Chamber can change without a
+ * deploy must never ALSO be a literal in here, because a second copy keeps
+ * publishing the old value on /simple and /es long after the office fixed it —
+ * on the two pages whose readers are least equipped to notice.
+ *
+ *   - `phone` — the Chamber's own number, a copy-registry block
+ *     (`contact.phone.number`) editable at Admin → Site content. Agency numbers
+ *     are different: they are literals below, with sources, because the Chamber
+ *     does not own them and must not be able to edit them.
+ *
+ *   - `walkOnRoundTrip` — the walk-on round-trip ferry fare, a row in the E27
+ *     `fares` record editable at /admin/ferry-info → Fares. WSF adjusts fares
+ *     most Octobers (docs/OPERATIONS.md §6), and before this token that
+ *     October fix reached /ferry with no deploy but left /simple and /es
+ *     showing last year's number until someone edited this file.
+ *
+ * Translators still own every word around the token — the substitution is the
+ * FIGURE only, never a phrase carried over from the English.
  */
-export const SAFETY_PLACEHOLDERS = ["phone"] as const;
+export const SAFETY_PLACEHOLDERS = ["phone", "walkOnRoundTrip"] as const;
 
 export type SafetyValues = Record<(typeof SAFETY_PLACEHOLDERS)[number], string>;
+
+/**
+ * Tokens whose live value can legitimately be missing at render time, and so
+ * need wording to fall back to. `phone` is not one of them: the copy registry
+ * always resolves it.
+ */
+export const SAFETY_FALLBACK_TOKENS = ["walkOnRoundTrip"] as const;
+
+export type SafetyLang = "en" | "es";
+
+/**
+ * What each half says in place of a figure nobody can vouch for.
+ *
+ * These are translations, not defaults — deliberately in THIS file, beside the
+ * sentences they land in, so the bilingual reviewer of docs/OPERATIONS.md
+ * §13.1 reads them along with everything else a Spanish-speaking visitor can
+ * see. A stale fare and an invented one are both worse than "check the sign":
+ * a visitor who reads a number here plans around it and is short at the
+ * tollbooth.
+ */
+export const SAFETY_TOKEN_FALLBACKS = {
+  en: { walkOnRoundTrip: "the fare posted at Edmonds" },
+  es: { walkOnRoundTrip: "la tarifa publicada en Edmonds" },
+} as const satisfies Record<
+  SafetyLang,
+  Record<(typeof SAFETY_FALLBACK_TOKENS)[number], string>
+>;
+
+/**
+ * The values one page hands to <SafetyEssentials/>. The single place the
+ * fallback decision is made, so /simple and /es cannot disagree about what an
+ * unavailable fare looks like — pass `null` for a token with no live value.
+ */
+export function safetyValues(
+  lang: SafetyLang,
+  live: { phone: string; walkOnRoundTrip: string | null },
+): SafetyValues {
+  return {
+    phone: live.phone,
+    walkOnRoundTrip: live.walkOnRoundTrip ?? SAFETY_TOKEN_FALLBACKS[lang].walkOnRoundTrip,
+  };
+}
 
 /** Every `{token}` occurrence in `text`, as bare token names. */
 export function safetyPlaceholdersIn(text: string): string[] {
@@ -91,7 +145,10 @@ const en: SafetyStrings = {
       "Do not leave your car in the free 2-hour row. The Port asks ferry riders to stay out of it.",
       "Walk down to the ferry building at the bottom of the hill.",
       "You do not pay in Kingston. Walk on board.",
-      "You pay on the Edmonds side. A round trip on foot costs $11.35 in total.",
+      // "in total" became ", and you pay it once" so the sentence still reads
+      // when {walkOnRoundTrip} is a phrase rather than a figure. Same fact,
+      // stated more plainly: one payment covers both directions.
+      "You pay on the Edmonds side. A round trip on foot costs {walkOnRoundTrip}, and you pay it once.",
     ],
     note: "Bikes go on with the walk-on riders.",
   },
@@ -172,7 +229,10 @@ const es: SafetyStrings = {
       "No deje su carro en la fila gratis de 2 horas. El Port pide que los pasajeros del ferry no la usen.",
       "Baje caminando hasta el edificio del ferry, al final de la bajada.",
       "En Kingston no se paga. Suba al barco.",
-      "Se paga del lado de Edmonds. El viaje de ida y vuelta a pie cuesta $11.35 en total.",
+      // Mirrors the English change: "en total" → ", y se paga una sola vez",
+      // so the sentence survives {walkOnRoundTrip} being a phrase. Stays in
+      // the formal usted register the rest of this half uses.
+      "Se paga del lado de Edmonds. El viaje de ida y vuelta a pie cuesta {walkOnRoundTrip}, y se paga una sola vez.",
     ],
     note: "Las bicicletas suben junto con los pasajeros a pie.",
   },

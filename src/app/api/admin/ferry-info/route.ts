@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser, requireAdmin } from "@/lib/auth";
+import { FARE_ROW_KEYS } from "@/lib/data/ferry-info";
 import {
   FERRY_INFO_IDS,
   getFerryInfoRecords,
@@ -114,8 +115,15 @@ function buildSources(doc: unknown): Source[] | string {
   return out;
 }
 
-/** A capped list of { label, amount, note? } fare rows. Blank rows are dropped
- *  (the editor may leave a trailing empty one), matching buildSources. */
+/** A capped list of { key?, label, amount, note? } fare rows. Blank rows are
+ *  dropped (the editor may leave a trailing empty one), matching buildSources.
+ *
+ *  `key` is carried through rather than rebuilt: it is the stable identity
+ *  /ferry, /simple and /es use to find a row they quote inside a sentence, and
+ *  dropping it here would mean the FIRST admin save silently unhooked those
+ *  pages from the record — exactly the failure the key exists to prevent.
+ *  Only keys in FARE_ROW_KEYS survive, so the overlay cannot accumulate
+ *  identities nothing looks for. It is not editable in the UI. */
 function fareRows(v: unknown, group: string): FareRow[] | string {
   if (!Array.isArray(v)) return `${group} fares must be a list`;
   const out: FareRow[] = [];
@@ -129,7 +137,8 @@ function fareRows(v: unknown, group: string): FareRow[] | string {
     if (!label && !amount && !note) continue;
     if (!label) return `${group} fare ${i + 1} needs a label`;
     if (!amount) return `${group} fare ${i + 1} needs an amount`;
-    out.push({ label, amount, ...(note ? { note } : {}) });
+    const key = FARE_ROW_KEYS.find((k) => k === str(s.key));
+    out.push({ ...(key ? { key } : {}), label, amount, ...(note ? { note } : {}) });
   }
   return out;
 }

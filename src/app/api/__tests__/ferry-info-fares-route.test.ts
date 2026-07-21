@@ -17,7 +17,11 @@
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { FERRY_FARES } from "@/lib/data/ferry-info";
+import {
+  FERRY_FARES,
+  WALK_ON_ROUND_TRIP_KEY,
+  walkOnRoundTripFare,
+} from "@/lib/data/ferry-info";
 import { getFerryInfo } from "@/lib/stores/ferry-info-store";
 import { createTestDb, type TestDb } from "../../../../tests/setup/pglite-db";
 
@@ -165,6 +169,38 @@ describe("POST /api/admin/ferry-info { id: 'fares' }", () => {
       doc: faresDoc({ walkOn: [], drive: [], fastFerry: [] }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("carries the stable row key through a save", async () => {
+    // The key is how /ferry, /simple and /es find the row they quote inside a
+    // sentence. If POST rebuilt the doc without it, the FIRST admin save would
+    // silently unhook those pages from the record — and the only symptom would
+    // be /simple and /es quietly dropping the fare from their sentence.
+    const res = await post({
+      id: "fares",
+      doc: faresDoc({
+        walkOn: [
+          { key: WALK_ON_ROUND_TRIP_KEY, label: "Walking on, both ways", amount: "$12.05" },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const info = await getFerryInfo();
+    expect(walkOnRoundTripFare(info.fares)).toBe("$12.05");
+  });
+
+  it("drops a key nothing looks for", async () => {
+    // Same rule as every other field here: rebuild from known values only, so
+    // the overlay cannot accumulate identities the code never resolves.
+    const res = await post({
+      id: "fares",
+      doc: faresDoc({
+        walkOn: [{ key: "not-a-real-key", label: "Round trip on foot", amount: "$11.35" }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).doc.walkOn[0].key).toBeUndefined();
   });
 
   it("refuses a non-admin", async () => {
