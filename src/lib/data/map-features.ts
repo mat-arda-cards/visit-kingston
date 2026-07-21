@@ -80,6 +80,7 @@ export const mapFeatures: MapFeature[] = [
     notes:
       "Public restrooms on the waterfront promenade by the Port marina, inside the D-shaped loop pod. Approximate location, read off the Port of Kingston's official parking map dated 12-30-25 (portofkingston.org) — the map shows the restrooms, not their exact footprint, so treat the pin as within about a block. Not field-checked.",
     category: "restroom",
+    cost: "free",
     views: ["amenities"],
     point: [47.7962, -122.498],
   },
@@ -90,6 +91,7 @@ export const mapFeatures: MapFeature[] = [
     notes:
       "Restrooms at the center of the boat-launch maneuvering apron, west of the marina. Approximate location, derived from the Port of Kingston's official parking map dated 12-30-25 (portofkingston.org), which places the launch restrooms mid-apron. Not field-checked.",
     category: "restroom",
+    cost: "free",
     views: ["amenities"],
     point: [47.796418, -122.499288],
   },

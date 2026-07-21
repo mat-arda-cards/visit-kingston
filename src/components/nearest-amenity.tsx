@@ -33,6 +33,8 @@ import { useMemo, useState } from "react";
 import { EditableText, useCopy } from "@/lib/copy-context";
 import { haversineMeters, walkMinutes } from "@/lib/geo";
 import { markerCategory } from "@/lib/map/types";
+import { CostBadge } from "@/components/cost-badge";
+import type { CostValue } from "@/lib/cost";
 import { mapDirectionsUrl } from "@/components/ui";
 
 /** Serializable amenity the server page maps into props. */
@@ -43,6 +45,7 @@ export interface AmenityPlace {
   lat: number;
   lng: number;
   notes?: string;
+  cost?: CostValue;
   /** Walking minutes from the ferry dock, precomputed server-side. */
   walkMinutesFromFerry: number;
 }
@@ -205,6 +208,11 @@ function AmenityRow({ place, meters }: { place: AmenityPlace; meters?: number })
         </span>
         {/* Category in TEXT, never the pin colour alone (WCAG 1.4.1). */}
         <span className="ml-2 text-xs text-ink-soft">{cat.label}</span>
+        {place.cost && (
+          <span className="ml-2 align-middle">
+            <CostBadge cost={place.cost} />
+          </span>
+        )}
         {place.notes && <span className="mt-0.5 block text-xs text-ink-soft">{place.notes}</span>}
       </span>
       <span className="flex items-center gap-3 whitespace-nowrap">

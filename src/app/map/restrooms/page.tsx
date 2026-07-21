@@ -46,6 +46,7 @@ export default async function RestroomsPage() {
         lat,
         lng,
         notes: f.notes,
+        cost: f.cost,
         walkMinutesFromFerry: walkMinutesFromDock(lat, lng),
       };
     });

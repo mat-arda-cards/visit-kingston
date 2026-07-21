@@ -9,6 +9,8 @@
 // Everything is portal-editable: seed views/features ship in src/lib/data,
 // admin edits overlay them in .data/stores (see map-store.ts).
 
+import type { CostValue } from "@/lib/cost";
+
 export type FeatureKind = "marker" | "line" | "trail" | "area";
 
 /** Built-in data layers a view can include without re-entering data. */
@@ -48,6 +50,10 @@ export interface MapFeature {
   notes?: string;
   /** Marker icon category (see MARKER_CATEGORIES). Ignored for non-markers. */
   category?: string;
+  /** E27 (M-04-06): does this cost a visitor money? Rendered as the shared
+   *  text CostBadge. Distinct from `parking` metadata's own free/paid taxonomy
+   *  below — see src/lib/cost.ts for why the two are kept apart. */
+  cost?: CostValue;
   /** Hex color for line/trail/area stroke+fill, or a marker tint override. */
   color?: string;
   /** Relative image path served by /api/map/image?p=… */
