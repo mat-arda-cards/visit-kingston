@@ -9,6 +9,7 @@
 // they're sized up (≈22) to stay legible on the smallest targeted screens.
 
 import { useId } from "react";
+import { chipFillHex } from "@/lib/ferry-chip";
 import {
   DAY_END_MIN,
   DAY_START_MIN,
@@ -148,8 +149,12 @@ export function Trendline({
       {/* selected-time marker */}
       <line x1={mx} y1={PAD.t} x2={mx} y2={H - PAD.b} stroke={meta.hex} strokeWidth="2" strokeDasharray="5 4" />
       <circle cx={mx} cy={my} r="7" fill={meta.hex} stroke="#fff" strokeWidth="2.5" />
+      {/* The chip is the only text-bearing element here, so it's the only one
+          that can't use the raw palette hex — white on all five fails AA 1.4.3
+          (busy is 2.27:1). chipFillHex() deepens the level's own color until
+          white clears 4.5:1; the line and dot above keep meta.hex exactly. */}
       <g>
-        <rect x={chipX} y={2} width={chipW} height={28} rx={14} fill={meta.hex} />
+        <rect x={chipX} y={2} width={chipW} height={28} rx={14} fill={chipFillHex(meta)} />
         <text x={chipX + chipW / 2} y={21} textAnchor="middle" fontSize={AXIS_FONT} fontWeight="600" fill="#fff">
           {meta.label}
         </text>
