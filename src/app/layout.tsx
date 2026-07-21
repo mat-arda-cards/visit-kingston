@@ -7,6 +7,7 @@ import { Tracker } from "@/components/tracker";
 import PwaClient from "@/components/pwa";
 import { getCopyOverrides } from "@/lib/stores/site-store";
 import { getEffectiveHiddenPaths } from "@/lib/page-visibility";
+import { siteUrl } from "@/lib/site-url";
 import { CopyProvider } from "@/lib/copy-context";
 
 const inter = Inter({
@@ -27,8 +28,9 @@ const satisfy = Satisfy({
 
 // Set NEXT_PUBLIC_SITE_URL to the deployed origin so shared-link cards and the
 // OG image resolve to absolute URLs. Dev falls back to localhost (fine — no
-// social scraper hits dev).
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+// social scraper hits dev). Shared with sitemap.ts and robots.ts via
+// siteUrl() so all three advertise the SAME origin.
+const SITE_URL = siteUrl();
 
 const DESCRIPTION =
   "Ferry times, restaurants, events, parking, and itineraries for Kingston, Washington — the gateway to the Kitsap Peninsula and Olympic National Park. The interactive companion to explorekingstonwa.com.";
