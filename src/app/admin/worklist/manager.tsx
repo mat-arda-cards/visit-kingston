@@ -80,8 +80,11 @@ function PrivacyRequestTools({
             disabled={busy}
             onClick={() =>
               onFulfill(item.id, "delete", {
-                confirmText:
-                  "Delete/anonymize this person's data across every store? This cannot be undone.",
+                // Name WHOSE data, so an admin can't be tricked by an
+                // unauthenticated request into erasing the wrong account.
+                confirmText: `Delete/anonymize the data for "${String(
+                  item.payload.contact ?? "(no contact on file)",
+                )}" across every store? Only do this once you have verified — out of band — that the requester controls this contact. This cannot be undone.`,
               })
             }
           >

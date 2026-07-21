@@ -18,7 +18,7 @@
 //    re-keys referential uses (record.updated_by) to the opaque user id so the
 //    audit trail's actor references don't dangle (D-11).
 
-import { getCharities, saveCharity } from "@/lib/stores/charity-store";
+import { getCharities } from "@/lib/stores/charity-store";
 import {
   anonymizeInvitesByEmail,
   anonymizeUser,
@@ -26,7 +26,11 @@ import {
   findUserByEmail,
   listUsers,
 } from "@/lib/db/auth-store";
-import { rekeyRecordActor } from "@/lib/db/privacy-delete";
+import {
+  isUnderLegalHold,
+  rekeyRecordActor,
+  scrubRecordDocFields,
+} from "@/lib/db/privacy-delete";
 import { listWorklistItems } from "@/lib/db/worklist";
 
 export interface PiiExport {
@@ -80,6 +84,11 @@ const users: PiiStore = {
   async deleteOrAnonymize(email, actor) {
     const u = await findUserByEmail(email);
     if (!u) return { store: "users", affected: 0 };
+    // FR-A92: a legal hold on the person's actual account record overrides
+    // consumer deletion — refuse and report, never anonymize.
+    if (await isUnderLegalHold("users", u.id)) {
+      return { store: "users", affected: 0, note: "account under legal hold — not anonymized (FR-A92)" };
+    }
     const opaqueId = await anonymizeUser(u.id, { actor, source: "admin" });
     // D-11: re-point mutable record.updated_by refs from the email to the
     // opaque id; the append-only audit.actor keeps the email (records floor).
@@ -103,7 +112,15 @@ const invites: PiiStore = {
     const rows = await findInvitesByEmail(email);
     return {
       store: "invites",
-      records: rows.map((i) => ({ code: i.code, email: i.email, role: i.role, note: i.note })),
+      // NEVER the `code` — it is a live bearer redemption token (like a
+      // password hash, excluded above). Report that an invite exists.
+      records: rows.map((i) => ({
+        role: i.role,
+        email: i.email,
+        note: i.note,
+        expiresAt: i.expiresAt,
+        pendingInvite: true,
+      })),
     };
   },
   async deleteOrAnonymize(email, actor) {
@@ -128,10 +145,23 @@ const charities: PiiStore = {
   },
   async deleteOrAnonymize(email, actor) {
     const rows = (await getCharities()).filter((c) => eq(c.contactEmail, email));
+    let scrubbed = 0;
+    let held = 0;
     for (const c of rows) {
-      await saveCharity({ ...c, contactEmail: undefined }, { actor, source: "admin" });
+      if (await isUnderLegalHold("charities", c.id)) {
+        held++;
+        continue;
+      }
+      // Metadata-only scrub (NOT saveCharity → writeRecord, which would
+      // snapshot the email into the immortal audit table).
+      await scrubRecordDocFields("charities", c.id, ["contactEmail"], actor);
+      scrubbed++;
     }
-    return { store: "charities", affected: rows.length };
+    return {
+      store: "charities",
+      affected: scrubbed,
+      note: held > 0 ? `${held} under legal hold — not scrubbed (FR-A92)` : undefined,
+    };
   },
 };
 
