@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Sailing, TerminalStatus } from "@/lib/types";
 import type { WaterSide } from "@/lib/side";
-import { formatPacificTime } from "@/lib/time";
+import { formatPacificDate, formatPacificTime } from "@/lib/time";
 import { Badge, Card, ExternalLink } from "@/components/ui";
 
 interface FeedState {
@@ -33,6 +33,35 @@ function countdown(departsIso: string, now: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m === 0 ? `in ${h} hr` : `in ${h} hr ${m} min`;
+}
+
+/**
+ * E13. WHEN the times on screen were last known good, and WHY they stopped
+ * being live — two separate claims that used to share one label.
+ *
+ * "offline" is the visitor's network: a thrown fetch, or the worker handing
+ * back its saved copy (the X-SW-Fetched-At stamp). "unavailable" is a resolved
+ * response that isn't ok — most often our own server 500ing while the visitor
+ * has four bars, so "Offline" would send them hunting for a signal problem
+ * that is ours. The worker's synthetic 503 (fetch threw, nothing cached) lands
+ * in that same branch, so the "unavailable" wording must stay true for a
+ * genuinely offline reader too: it claims nothing either way about the network.
+ */
+type Stale = { at: string; reason: "offline" | "unavailable" };
+
+/**
+ * The saved instant as a Kingston wall-clock time, date-qualified whenever it
+ * isn't today: a phone that has been offline since Friday would otherwise say
+ * "as of 8:47 PM" on Sunday, which reads as tonight. `nowMs` is the ticking
+ * `now` state rather than Date.now() so this stays a pure function of render
+ * inputs. (next-ferries.tsx carries the same helper — no shared module for two
+ * small copies.)
+ */
+function savedAtLabel(iso: string, nowMs: number): string {
+  const day = formatPacificDate(iso);
+  return day === formatPacificDate(new Date(nowMs).toISOString())
+    ? formatPacificTime(iso)
+    : `${day}, ${formatPacificTime(iso)}`;
 }
 
 /** Remaining sailings in one direction, soonest first (90s grace for a boat leaving right now). */
@@ -135,6 +164,15 @@ export function FerryBoard({
   const [data, setData] = useState<FerryStatusPayload>(initial);
   const [now, setNow] = useState<number>(() => Date.parse(serverNow));
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  // E13 staleness. The instant is an ISO string: the service worker stamps
+  // X-SW-Fetched-At as ISO and formatPacificTime() takes an ISO string, so no
+  // conversion is needed.
+  const [stale, setStale] = useState<Stale | null>(null);
+  // Must be a ref, not state: refresh() lives inside the polling effect below,
+  // whose dep array is empty, so it closes over the first render forever — a
+  // state dep would rebuild the 60s interval on every poll. Seeded from
+  // serverNow because at t=0 the times on screen came from that server render.
+  const lastGoodRef = useRef<string>(serverNow);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -143,15 +181,37 @@ export function FerryBoard({
     async function refresh() {
       try {
         const res = await fetch("/api/ferry/status");
-        if (!res.ok) return;
+        if (!res.ok) {
+          // E13: a 5xx is a RESOLVED fetch. The bare `return` that used to live
+          // here left the board looking live through a server outage.
+          // "unavailable", not "offline": this fires for our own broken server
+          // as readily as for the worker's 503.
+          if (!cancelled) setStale({ at: lastGoodRef.current, reason: "unavailable" });
+          return;
+        }
+        // E13: a service-worker cache hit also resolves with res.ok === true, so
+        // the catch never fires and this header is the only signal the bytes are
+        // old. No header means genuinely fresh — no SW, an unsupported browser,
+        // or a dev build must not be made to look like a failure.
+        const fetchedAt = res.headers.get("X-SW-Fetched-At");
         const next = (await res.json()) as FerryStatusPayload;
         if (!cancelled) {
           setData(next);
-          setUpdatedAt(new Date().toISOString());
+          // Date the footer's "Updated …" from the cache stamp when there is one;
+          // saying "Updated <now>" over week-old cached bytes is the dishonesty
+          // this epic exists to remove.
+          setUpdatedAt(fetchedAt ?? new Date().toISOString());
           setNow(Date.now());
+          if (fetchedAt) {
+            setStale({ at: fetchedAt, reason: "offline" });
+          } else {
+            lastGoodRef.current = new Date().toISOString();
+            setStale(null);
+          }
         }
       } catch {
-        // Network hiccup — keep showing the last good data.
+        // Network hiccup — keep showing the last good data, but date it.
+        if (!cancelled) setStale({ at: lastGoodRef.current, reason: "offline" });
       }
     }
 
@@ -198,6 +258,26 @@ export function FerryBoard({
 
   return (
     <div className="space-y-5">
+      {/* E13 transport freshness — "how old is this copy of the board?", which is
+          a different question from the per-card "Schedule times — not live"
+          notes ("is the WSDOT feed live?"). Both can legitimately show at once
+          offline. It leads the board on purpose: it frames every time below it,
+          and the reader must meet it well before the footer. */}
+      {stale && (
+        <p role="status" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {stale.reason === "offline"
+            ? `Offline — saved times as of ${savedAtLabel(stale.at, now)}.`
+            : `Can’t reach live times — saved times as of ${savedAtLabel(stale.at, now)}.`}{" "}
+          Not live; confirm at{" "}
+          <ExternalLink href="https://wsdot.wa.gov/travel/washington-state-ferries">
+            wsdot.wa.gov/ferries
+          </ExternalLink>
+          {/* Only the offline wording may promise that going back online fixes
+              it — when it's our server that's down, it won't. */}
+          {stale.reason === "offline" ? " when you’re back online." : "."}
+        </p>
+      )}
+
       {newAlerts.length > 0 && (
         <div className="rounded-xl border-l-4 border-coral bg-coral/5 p-4">
           <p className="font-semibold text-sound-deep">New WSF alert since you opened this page</p>

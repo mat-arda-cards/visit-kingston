@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { claimIdempotencyKey, releaseIdempotencyKey } from "@/lib/db/idempotency";
 import { checkRateLimit, clientKey } from "@/lib/rate-limit";
 import { surveyStore } from "@/lib/survey-store";
 import type { SurveyResponse } from "@/lib/types";
@@ -36,6 +37,25 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "distanceBand required" }, { status: 400 });
   }
 
+  // E13 idempotent intake for the offline outbox. Placement is load-bearing:
+  // AFTER validation (a claim taken on a body we then reject would burn the
+  // key — the outbox deletes its copy on a 400, so the answer is gone and the
+  // replay can never land) and BEFORE the save. No header = today's behavior,
+  // byte for byte: the /embed widget and clients running an old cached bundle
+  // never send one and must keep working.
+  const idempotencyKey = request.headers.get("X-Idempotency-Key");
+  if (idempotencyKey) {
+    const claim = await claimIdempotencyKey(idempotencyKey, "survey");
+    if (claim === "invalid") {
+      return Response.json({ error: "invalid idempotency key" }, { status: 400 });
+    }
+    if (claim === "duplicate") {
+      // A replay of a submission we already stored. Success, without a second
+      // row — that is the whole point of letting the outbox retry blindly.
+      return Response.json({ ok: true, duplicate: true });
+    }
+  }
+
   // E11: the dead zip/state fields are gone — the survey UI never asked for
   // them (audit-confirmed dead PII surface); the route no longer accepts them.
   const response: SurveyResponse = {
@@ -60,6 +80,13 @@ export async function POST(request: NextRequest) {
   } catch {
     // Read-only filesystem (e.g. serverless without a DB store configured):
     // don't fail the visitor's request over telemetry.
+    //
+    // E13 compensation: hand the key back first. This path still answers
+    // {ok:true}, so the outbox deletes its copy — and a claim left standing
+    // would turn a transient store outage into PERMANENT loss, because every
+    // later replay of that key answers "duplicate" for a row that was never
+    // written. Best-effort by contract: releaseIdempotencyKey never throws.
+    if (idempotencyKey) await releaseIdempotencyKey(idempotencyKey);
     console.warn("survey: store unavailable, response dropped");
   }
   return Response.json({ ok: true });
