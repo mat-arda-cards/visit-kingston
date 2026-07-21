@@ -12,9 +12,16 @@
 //   a person or device. Geography is derived server-side from the connection
 //   (see /api/track); nothing is read from the device and no permission
 //   prompt ever appears.
+// - <WebVitals/> (also wired once in the root layout) reports this page load's
+//   final LCP — a browser timing about the PAGE, never about the visitor. It
+//   exists because the Lighthouse CI gate measures a simulated lab load, which
+//   cannot tell the Chamber what a real phone on a real ferry-queue signal
+//   waited for. Only LCP is emitted today; the event schema and the ingest
+//   whitelist already carry CLS and INP, so adding them is a client-only
+//   change (see WEB_VITAL_SPECS in src/lib/analytics-store.ts).
 // - /admin paths are never tracked.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { isSensitiveOutbound } from "@/lib/privacy/policy";
@@ -130,6 +137,94 @@ export function OutboundLink({
       {children}
     </a>
   );
+}
+
+/**
+ * Reports this page load's final LCP once (E15 follow-up). Renders nothing.
+ *
+ * WHY: NFR-1 / M-18-02 wants mobile LCP under 2.5s, and the Lighthouse gate
+ * measures a SIMULATED load of four hand-picked URLs on CI hardware. That
+ * number and its phase attribution proved environment-dependent — the same
+ * build attributed the identical total to completely different phases in the
+ * lab vs production. This is the ground truth the gate cannot provide: what
+ * the actual phone in the actual ferry queue actually waited for.
+ *
+ * ONCE PER DOCUMENT LOAD, not per pathname — LCP is a page-LOAD metric. A
+ * client-side route change emits no new largest-contentful-paint entry, so
+ * re-running this per pathname would re-report the FIRST page's number against
+ * every route the visitor later opened. Hence [] deps and the captured path.
+ *
+ * Everything here is feature-detected and every failure path is a silent
+ * no-op: an unsupported browser gets the plain app, never an error. Nothing
+ * about the visitor is read — see AnalyticsEvent.metric for why this carries
+ * no consent obligation.
+ */
+export function WebVitals() {
+  const pathname = usePathname();
+  // The path of the document that actually loaded, frozen at first render.
+  const loadPath = useRef(pathname);
+
+  useEffect(() => {
+    const path = loadPath.current;
+    if (!path || path.startsWith("/admin")) return;
+    if (typeof PerformanceObserver === "undefined") return;
+
+    let latest = 0;
+    let sent = false;
+    let observer: PerformanceObserver;
+
+    try {
+      observer = new PerformanceObserver((list) => {
+        // LCP is emitted repeatedly as bigger elements paint; the LAST entry
+        // is the real one. The browser stops emitting after first input.
+        for (const entry of list.getEntries()) latest = entry.startTime;
+      });
+      // buffered: true replays entries that fired BEFORE hydration mounted
+      // this component — without it we would miss the LCP on every fast load,
+      // biasing the sample toward slow pages only.
+      observer.observe({ type: "largest-contentful-paint", buffered: true });
+    } catch {
+      return; // entry type unsupported (Safari < 16 etc.) — no-op, not an error
+    }
+
+    // REPORTING MOMENT — the accuracy/completeness trade-off, chosen as:
+    // report when the page is first hidden, never before.
+    //
+    // LCP is not final until the page is backgrounded or the visitor
+    // interacts, so reporting earlier would record a premature value and make
+    // every number optimistic. The cost is that a session whose tab is killed
+    // outright never reports. Both `visibilitychange -> hidden` and `pagehide`
+    // are listened for because iOS Safari does not reliably fire
+    // visibilitychange when the app is swiped away, and pagehide covers the
+    // bfcache path. `sent` makes the pair idempotent.
+    const report = () => {
+      if (sent || latest <= 0) return;
+      sent = true;
+      try {
+        observer.disconnect();
+      } catch {
+        // already gone; the beacon below is what matters
+      }
+      send({ type: "webvital", metric: "LCP", value: latest, path, sessionId: getSessionId() });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") report();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", report);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", report);
+      try {
+        observer.disconnect();
+      } catch {
+        // no-op
+      }
+    };
+  }, []);
+
+  return null;
 }
 
 /** Fires one pageview per pathname change. Renders nothing. */
