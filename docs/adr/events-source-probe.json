@@ -1,0 +1,77 @@
+{
+  "generatedAt": "2026-07-21T00:19:41.537Z",
+  "sources": {
+    "explorekingstonwa.com": {
+      "source": "explorekingstonwa.com",
+      "kind": "tribe-rest",
+      "url": "https://explorekingstonwa.com/wp-json/tribe/events/v1/events?per_page=5",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8",
+      "total": 0,
+      "eventCount": 0,
+      "firstGlobalId": null,
+      "pass": true
+    },
+    "portofkingston.org": {
+      "source": "portofkingston.org",
+      "kind": "tribe-rest",
+      "url": "https://portofkingston.org/wp-json/tribe/events/v1/events?per_page=5",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8",
+      "total": 32,
+      "eventCount": 5,
+      "firstGlobalId": "portofkingston.org?id=18728",
+      "pass": true
+    },
+    "business.kingstonchamber.com": {
+      "source": "business.kingstonchamber.com",
+      "kind": "growthzone-ical",
+      "url": "https://business.kingstonchamber.com/events",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "detailsSlugsFound": [
+        "grand-hallway-art-show-1770249",
+        "salish-100-happy-hour-1860422",
+        "steel-rain-steel-drum-summer-outdoor-concert-series-1736723"
+      ],
+      "perEventIcs": [
+        {
+          "url": "https://business.kingstonchamber.com/events/ICal/grand-hallway-art-show-1770249.ics",
+          "status": 200,
+          "contentType": "text/calendar; charset=utf-8",
+          "pass": true,
+          "prodId": "-//ChamberMaster//Event Calendar 2.0//EN",
+          "publishedTtl": "P1H",
+          "hasLosAngelesTzid": true
+        },
+        {
+          "url": "https://business.kingstonchamber.com/events/ICal/salish-100-happy-hour-1860422.ics",
+          "status": 200,
+          "contentType": "text/calendar; charset=utf-8",
+          "pass": true,
+          "prodId": "-//ChamberMaster//Event Calendar 2.0//EN",
+          "publishedTtl": "P1H",
+          "hasLosAngelesTzid": true
+        },
+        {
+          "url": "https://business.kingstonchamber.com/events/ICal/steel-rain-steel-drum-summer-outdoor-concert-series-1736723.ics",
+          "status": 200,
+          "contentType": "text/calendar; charset=utf-8",
+          "pass": true,
+          "prodId": "-//ChamberMaster//Event Calendar 2.0//EN",
+          "publishedTtl": "P1H",
+          "hasLosAngelesTzid": true
+        }
+      ],
+      "softNotFound": {
+        "url": "https://business.kingstonchamber.com/events/ical",
+        "status": 200,
+        "contentType": "text/html; charset=utf-8",
+        "isSoft404": true
+      },
+      "wholeCalendarFeed": null,
+      "pass": true
+    }
+  },
+  "requiredChecksPass": true
+}

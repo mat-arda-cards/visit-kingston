@@ -1,0 +1,38 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//ChamberMaster//Event Calendar 2.0//EN
+METHOD:PUBLISH
+X-PUBLISHED-TTL:P1H
+REFRESH-INTERVAL:P1H
+CALSCALE:GREGORIAN
+BEGIN:VTIMEZONE
+TZID:America/Los_Angeles
+BEGIN:DAYLIGHT
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+DTSTART:20070101T000000
+TZOFFSETFROM:-0800
+TZOFFSETTO:-0700
+TZNAME:Pacific Daylight Time
+END:DAYLIGHT
+BEGIN:STANDARD
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+DTSTART:20070101T000000
+TZOFFSETFROM:-0700
+TZOFFSETTO:-0800
+TZNAME:Pacific Standard Time
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+DTSTART;TZID=America/Los_Angeles:20260701T090000
+DTEND;TZID=America/Los_Angeles:20260831T180000
+X-MICROSOFT-CDO-ALLDAYEVENT:FALSE
+SUMMARY:Grand Hallway Art Show
+DESCRIPTION:Join us in welcoming our latest artist to the Village Green Community Center Grand Hallway Art Gallery. Local talent Kelly Roberts will showcase her beautiful collection of photography work for everyone to enjoy throughout July and August.
+X-ALT-DESC;FMTTYPE=text/html:<!DOCTYPE html><html><head><title></title></head><body aria-disabled="false"><p><span style="color: rgb(49\, 49\, 49)\; font-family: Varta\, sans-serif\; font-size: 18px\; font-style: normal\; font-variant-ligatures: normal\; font-variant-caps: normal\; font-weight: 400\; letter-spacing: normal\; orphans: 2\; text-align: start\; text-indent: 0px\; text-transform: none\; widows: 2\; word-spacing: 0px\; -webkit-text-stroke-width: 0px\; white-space: normal\; background-color: rgb(255\, 255\, 255)\; text-decoration-thickness: initial\; text-decoration-style: initial\; text-decoration-color: initial\; display: inline !important\; float: none\;">Join us in welcoming our latest artist to the Village Green Community Center Grand Hallway Art Gallery. Local talent Kelly Roberts will showcase her beautiful collection of photography work for everyone to enjoy throughout July and August.</span> </p></body></html>
+LOCATION:
+UID:e.3508.1493103
+SEQUENCE:3
+DTSTAMP:20260721T001929Z
+URL:https://business.kingstonchamber.com/events/Details/grand-hallway-art-show-1770249?sourceTypeId=Hub
+END:VEVENT
+END:VCALENDAR
