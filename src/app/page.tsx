@@ -140,6 +140,31 @@ export default async function Home() {
         </div>
       </div>
 
+      {/* E14 (M-14-03): the plain-language door, above everything else on the
+          page for the reader who needs it most. Hideable like any other page,
+          so it goes through the same hiddenPaths filter as the feature grid. */}
+      {!hiddenPaths.includes("/simple") && (
+        <Section>
+          <Link
+            href="/simple"
+            className="flex min-h-11 items-center justify-between gap-4 rounded-2xl border-2 border-sound bg-white px-5 py-4"
+          >
+            <span>
+              <span className="font-display block text-xl font-semibold text-sound-deep">
+                Kingston basics
+              </span>
+              <span className="block text-base text-ink">
+                Big type, short words: the next boats, where to eat, and a phone number that
+                reaches a person.
+              </span>
+            </span>
+            <span className="shrink-0 text-lg font-semibold text-sound-deep" aria-hidden>
+              →
+            </span>
+          </Link>
+        </Section>
+      )}
+
       {/* Plan-ahead callout → the ferry busyness planner. Shown only when the
           feature is live for visitors; admins preview it on /ferry/plan. */}
       {predictionEnabled && (
@@ -201,7 +226,9 @@ export default async function Home() {
               href={f.href}
               className="group relative overflow-hidden rounded-3xl border border-white/60 bg-white/40 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(11,25,44,0.06)] transition-all duration-300 hover:-translate-y-1 hover:bg-white/60 hover:shadow-[0_8px_32px_rgba(11,25,44,0.12)]"
             >
-              <div className="absolute inset-0 -z-10 bg-gradient-to-br from-white/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+              {/* Purely decorative hover glow — carries no information, so it
+                  is the kind of thing simple mode drops (E14 .simple-hide). */}
+              <div className="simple-hide absolute inset-0 -z-10 bg-gradient-to-br from-white/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               {/* E14: decorative — the card title already names the
                   destination, so the glyph must not double-read into the
                   link's accessible name. */}

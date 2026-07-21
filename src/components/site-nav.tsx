@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { SimpleModeToggle } from "@/components/simple-mode-toggle";
 
 // E14: both "More" surfaces are DISCLOSURES, not dialogs — no focus trap, no
 // `role="menu"`. What they owe the keyboard is Escape-to-close with focus
@@ -101,8 +102,10 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
 
   return (
     <>
-      {/* Top header */}
-      <header className="sticky top-0 z-40 border-b border-sand bg-white/95 backdrop-blur">
+      {/* Top header. print:hidden (E14): site chrome is noise on paper, and the
+          hiding is done here rather than with a global `header{display:none}`
+          rule, which would also blank every PageHeader. */}
+      <header className="sticky top-0 z-40 border-b border-sand bg-white/95 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
           <Link href="/" className="flex items-center gap-2.5" onClick={() => setSheetOpen(false)}>
             {/* Official Explore Kingston logo — black brush-script wordmark + #1E96C0 sailboat */}
@@ -162,6 +165,15 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
                       {l.label}
                     </Link>
                   ))}
+                  {/* E14: the "Easy read" switch lives in the desktop nav's More
+                      disclosure rather than the top bar — the bar's five
+                      uppercase links plus the logo already fill the row at the
+                      768px md breakpoint, and a seventh control overflows it.
+                      Same surface as the mobile sheet below, so the control is
+                      in one predictable place on both. */}
+                  <div className="mt-1 border-t border-sand px-1 pt-1">
+                    <SimpleModeToggle className="w-full justify-start" />
+                  </div>
                 </div>
               )}
             </div>
@@ -171,7 +183,7 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
 
       {/* Mobile bottom bar — pad for the iOS home-indicator inset */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-sand bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-sand bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden print:hidden"
         aria-label="Mobile"
       >
         <div
@@ -236,7 +248,7 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
         <div
           id={MORE_SHEET_ID}
           ref={sheetRef}
-          className="fixed inset-x-0 bottom-[calc(3.4rem+env(safe-area-inset-bottom))] z-30 border-t border-sand bg-white p-4 shadow-[0_-8px_24px_rgba(22,64,94,0.12)] md:hidden"
+          className="fixed inset-x-0 bottom-[calc(3.4rem+env(safe-area-inset-bottom))] z-30 border-t border-sand bg-white p-4 shadow-[0_-8px_24px_rgba(22,64,94,0.12)] md:hidden print:hidden"
         >
           <div className="grid grid-cols-2 gap-2">
             {[...primary.filter((l) => !["/ferry", "/eat", "/events"].includes(l.href)), ...more].map(
@@ -254,6 +266,11 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
                 </Link>
               ),
             )}
+          </div>
+          {/* E14: the "Easy read" switch (M-14-03). Sheet-level rather than a
+              grid cell — it changes the whole page, it does not navigate. */}
+          <div className="mt-3 border-t border-sand pt-2">
+            <SimpleModeToggle className="w-full justify-start" />
           </div>
         </div>
       )}

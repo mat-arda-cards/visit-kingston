@@ -630,6 +630,111 @@ export const COPY_BLOCKS = [
     label: "Label: fast ferry to Seattle",
     fallback: "Fast Ferry:",
   },
+
+  // ---- E14: the non-app fallbacks (M-18-07 / FR-47) ----
+  // The Chamber's own phone number lives in the registry, not in code, so the
+  // office can change it without a deploy. Fallback corroborated three ways:
+  // docs/OPERATIONS.md §9 item 7, the Chamber's public site footer at
+  // explorekingstonwa.com, and public business listings.
+  {
+    key: "contact.phone.number",
+    page: "Contact (phone fallback)",
+    label: "Chamber phone number (digits as printed)",
+    fallback: "360-860-2239",
+  },
+  {
+    key: "contact.phone.label",
+    page: "Contact (phone fallback)",
+    label: "Phone link label",
+    fallback: "Call the Kingston Chamber",
+  },
+
+  // ---- /simple — "Kingston basics" (M-14-03 plain-language page) ----
+  {
+    key: "simple.toggle.label",
+    page: "Simple mode (client)",
+    label: "Easy-read switch label",
+    fallback: "Easy read",
+  },
+  {
+    key: "simple.header.eyebrow",
+    page: "Kingston basics (/simple)",
+    label: "Header eyebrow",
+    fallback: "The short version",
+  },
+  {
+    key: "simple.header.title",
+    page: "Kingston basics (/simple)",
+    label: "Page title",
+    fallback: "Kingston basics",
+  },
+  {
+    key: "simple.header.intro",
+    page: "Kingston basics (/simple)",
+    label: "Intro sentence",
+    multiline: true,
+    fallback: "Big type. Short words. The few things most visitors need.",
+  },
+  {
+    key: "simple.help.body",
+    page: "Kingston basics (/simple)",
+    label: "Phone block: what the Chamber can help with",
+    multiline: true,
+    fallback: "A real person answers during office hours. Ask about ferries, parking, food, or anything else in town.",
+  },
+  {
+    key: "simple.boats.none",
+    page: "Kingston basics (/simple)",
+    label: "Boats: nothing left today",
+    multiline: true,
+    fallback: "No more boats today. Boats start again tomorrow morning.",
+  },
+
+  // Shared by /simple and /print: the same honesty line next-ferries.tsx shows
+  // when the WSF feed is down and the bundled schedule is standing in for it.
+  {
+    key: "ferry.schedule.notLive",
+    page: "Ferry times (shared)",
+    label: "Caveat when live ferry data is unavailable",
+    multiline: true,
+    fallback: "These are schedule times, not live times. Call to check before you go.",
+  },
+
+  // ---- /print — the printable one-pager ----
+  {
+    key: "print.header.title",
+    page: "Printable page (/print)",
+    label: "Page title",
+    fallback: "Kingston at a glance",
+  },
+  {
+    key: "print.header.intro",
+    page: "Printable page (/print)",
+    label: "Intro sentence",
+    multiline: true,
+    fallback: "One page to print or save: today's boats, the numbers to call, and where to park.",
+  },
+  {
+    key: "print.button.label",
+    page: "Printable page (/print)",
+    label: "Print button label",
+    fallback: "Print this page",
+  },
+  {
+    key: "print.basics.body",
+    page: "Printable page (/print)",
+    label: "Restroom and parking basics",
+    multiline: true,
+    fallback: "Restrooms: there are public restrooms on the waterfront promenade by the Port marina, near the boat launch. Parking: the Port lot by the marina is paid, the free row nearest the shops has a 2-hour limit that is strictly enforced, and street parking has rules only where a sign says so.",
+  },
+  {
+    key: "print.caveat",
+    page: "Printable page (/print)",
+    label: "Closing caveat line",
+    multiline: true,
+    fallback: "Times change — call to confirm.",
+  },
+
   // Footer
   {
     key: "footer.brand",

@@ -25,6 +25,11 @@ export const HIDEABLE_PAGES: { path: string; label: string }[] = [
   { path: "/give", label: "Give Back" },
   { path: "/hunt", label: "Scavenger Hunt" },
   { path: "/about", label: "About" },
+  // E14 — the non-app fallbacks (M-14-03 / M-18-07). Visible by default like
+  // every other entry; listed here so the Chamber can hide them from the same
+  // Admin → Site content screen, and so nav/footer links drop out with them.
+  { path: "/simple", label: "Kingston basics (easy read)" },
+  { path: "/print", label: "Printable one-pager" },
 ];
 
 /**

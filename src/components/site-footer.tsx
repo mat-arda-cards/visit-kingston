@@ -8,7 +8,15 @@ const planLinks = [
   { href: "/parking", label: "Parking" },
   { href: "/webcams", label: "Webcams" },
   { href: "/itineraries", label: "Itineraries" },
+  // E14: the plain-language page. Hideable like the rest, so it goes through
+  // the same hiddenPaths filter below — a visitor never sees a link to a 404.
+  { href: "/simple", label: "Kingston basics" },
 ];
+
+/** `tel:` href for a printed-style number ("360-860-2239" → "tel:+13608602239"). */
+function telHref(phone: string): string {
+  return `tel:+1${phone.replace(/\D/g, "")}`;
+}
 
 const communityLinks = [
   { href: "/events", label: "Events calendar" },
@@ -27,8 +35,11 @@ export function SiteFooter({
   // Admin-hidden pages drop out of the footer lists too.
   const plan = planLinks.filter((l) => !hiddenPaths.includes(l.href));
   const community = communityLinks.filter((l) => !hiddenPaths.includes(l.href));
+  const phone = copyText(copy, "contact.phone.number");
   return (
-    <footer className="mt-12 bg-sound-deep text-white">
+    // print:hidden (E14): chrome is noise on paper — /print is the curated
+    // one-pager and carries its own copy of these phone numbers.
+    <footer className="mt-12 bg-sound-deep text-white print:hidden">
       <div className="mx-auto grid max-w-5xl gap-8 px-4 py-10 sm:grid-cols-3">
         <div>
           {/* Stacked logo is black-on-transparent, so it sits on a white chip */}
@@ -50,6 +61,18 @@ export function SiteFooter({
           <p className="mt-2 text-sm text-seaglass">
             {/* E14: on-navy tone — the default link colour is 2.41:1 here. */}
             <RichText tone="dark" text={copyText(copy, "footer.tagline")} />
+          </p>
+          {/* E14 (M-18-07 / FR-47): the always-reachable human fallback, on
+              every page. White on sound-deep is 12.7:1, and the number is
+              visible text as well as a tel: target so it can be read aloud,
+              copied, or written down by someone who will not tap it. */}
+          <p className="mt-4 text-base">
+            <a
+              href={telHref(phone)}
+              className="inline-flex min-h-11 items-center font-semibold text-white underline underline-offset-2"
+            >
+              {copyText(copy, "contact.phone.label")}: {phone}
+            </a>
           </p>
         </div>
         <div>

@@ -98,3 +98,65 @@ html {
     scroll-behavior: auto !important;
   }
 }
+
+/* E14 simple mode (vk/simple-mode, M-14-03 / NFR-95). Turned on by the "Easy
+   read" toggle, which writes localStorage["ek-simple"] and this attribute; the
+   root layout's pre-paint bootstrap re-applies it on the next visit. Never a
+   cookie — see src/components/simple-mode-toggle.tsx.
+
+   One root font-size bump scales the WHOLE app, because every size is rem after
+   the E14 slice-1 px sweep. 118% ≈ 19px root: noticeably bigger without the
+   line-length collapse a larger jump causes on a 375px phone. */
+html[data-simple="1"] {
+  font-size: 118%;
+}
+
+/* The topographic texture is the single biggest contrast tax on a phone held in
+   direct sun. Simple mode drops it — body and the .bg-topo standout sections —
+   leaving flat near-white behind the type. */
+html[data-simple="1"] body,
+html[data-simple="1"] .bg-topo {
+  background-image: none;
+}
+
+/* Muted body gray (--color-ink-soft, #6b7683) measures 4.4993:1 on the flat
+   shell — a hair under AA, and invisible to a scanner until the rule above
+   removes the texture that made the background indeterminate. Easy read is
+   precisely where secondary text should stop being secondary, so simple mode
+   promotes it to full ink: 14.8:1. Fixed at the usage sites and scoped to
+   simple mode — no --color-* token VALUE changes (E14 rule). The attribute
+   selector catches the `text-ink-soft/90` opacity variant too, and being
+   unlayered it outranks Tailwind's @layer utilities.
+
+   Links and buttons are excluded because interactive controls layer a state
+   colour ON TOP of a muted base — side-switcher.tsx's btnBase is
+   `text-ink-soft` and its active button adds `bg-tide-deep text-white`, so an
+   unlayered override would beat that `text-white` and repaint the active tab
+   ink-on-cyan (2.88:1). Everything else may carry the class on a CONTAINER and
+   let prose inherit it (/about, /parking, /map all do), which is why this is
+   not restricted to p/li. Verified with axe across every public route in both
+   modes; change the selector only with the same evidence. */
+html[data-simple="1"] [class~="text-ink-soft"]:not(a):not(button),
+html[data-simple="1"] [class~="text-ink-soft/90"]:not(a):not(button) {
+  color: var(--color-ink);
+}
+
+/* Utility for elements that carry NO information — decorative overlays, glows.
+   Apply sparingly: anything a reader could need must survive simple mode. */
+html[data-simple="1"] .simple-hide {
+  display: none;
+}
+
+/* E14 print rules (M-18-07 / FR-47). Deliberately narrow: reset the page fill
+   and the mobile bottom-nav padding, and let ink be ink. The site chrome is
+   hidden with Tailwind `print:hidden` at its usage sites in site-nav.tsx and
+   site-footer.tsx — NOT with a global `header { display: none }` rule here,
+   which would also blank every PageHeader (it renders a <header>). */
+@media print {
+  body {
+    background-color: #ffffff;
+    background-image: none;
+    color: #000000;
+    padding-bottom: 0;
+  }
+}
