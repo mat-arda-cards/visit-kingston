@@ -33,8 +33,10 @@ import {
   classifyArea,
   roundCoord,
   saveEvent,
+  WEB_VITAL_METRICS,
   type AnalyticsEvent,
   type AnalyticsGeo,
+  type WebVitalMetric,
 } from "@/lib/analytics-store";
 import { lookupGeo } from "@/lib/geoip";
 import { isSensitiveOutbound, isSensitivePath } from "@/lib/privacy/policy";
@@ -47,6 +49,20 @@ const MAX_LABEL = 120;
 const MAX_GEO_FIELD = 80;
 const MAX_NOTICE_VERSION = 16;
 const MAX_BODY_BYTES = 8_192;
+
+/**
+ * Upper bound per web vital, above which a sample is discarded as junk rather
+ * than clamped. Clamping would silently invent a plausible-looking value at
+ * the ceiling and drag the p75 with it; dropping loses one row and keeps the
+ * distribution honest. 300_000ms is 5 minutes — a page load beyond that is a
+ * device asleep mid-load or a forged beacon, not a visitor experience worth
+ * reporting. CLS is a ratio that realistically never exceeds single digits.
+ */
+const MAX_VITAL_VALUE: Record<WebVitalMetric, number> = {
+  LCP: 300_000,
+  INP: 300_000,
+  CLS: 100,
+};
 
 // Kitsap-ish bounding box for geo-pings. Anything outside is dropped
 // silently — the feature is about movement around Kingston, and out-of-range
@@ -144,7 +160,9 @@ export async function POST(request: NextRequest) {
             ? "geo-ping"
             : body.type === "consent"
               ? "consent"
-              : null;
+              : body.type === "webvital"
+                ? "webvital"
+                : null;
     // Geo-ping and consent beacons are payload + session only; default their
     // path so the shared validation below still applies to pageviews/outbound.
     const path =
@@ -192,6 +210,25 @@ export async function POST(request: NextRequest) {
       geoPing = { area: classifyArea(roundCoord(lat), roundCoord(lng)) };
     }
 
+    // Web vitals: a browser timing about the PAGE, never about the visitor —
+    // no coordinate, no identifier, nothing read from the device (see the
+    // AnalyticsEvent.metric doc comment for why this needs no geo consent).
+    // Validated here rather than trusted, because this endpoint is public: an
+    // unbounded client-supplied number would let anyone poison the p75 the
+    // Chamber reads, and NaN/Infinity would corrupt every percentile after it.
+    let webVital: Pick<AnalyticsEvent, "metric" | "value"> | undefined;
+    if (type === "webvital") {
+      const metric = WEB_VITAL_METRICS.find((m) => m === body.metric);
+      const raw = typeof body.value === "number" ? body.value : Number(body.value);
+      if (!metric || !Number.isFinite(raw) || raw < 0 || raw > MAX_VITAL_VALUE[metric]) {
+        return Response.json({ ok: true });
+      }
+      // CLS is a small unitless score, so it keeps 3 decimals; LCP/INP are
+      // milliseconds, where sub-millisecond precision is noise.
+      const value = metric === "CLS" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
+      webVital = { metric, value };
+    }
+
     const event: AnalyticsEvent = {
       ts: new Date().toISOString(),
       type,
@@ -206,6 +243,7 @@ export async function POST(request: NextRequest) {
           }
         : {}),
       ...(geoPing ?? {}),
+      ...(webVital ?? {}),
     };
 
     await saveEvent(event);

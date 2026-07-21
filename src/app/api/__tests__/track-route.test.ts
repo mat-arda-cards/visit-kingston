@@ -62,6 +62,9 @@ const ALLOWED_KEYS: Record<string, string[]> = {
   outbound: ["ts", "type", "path", "sessionId", "geo", "href", "label"],
   "geo-ping": ["ts", "type", "path", "sessionId", "geo", "area"],
   consent: ["ts", "type", "path", "sessionId", "geo", "noticeVersion", "consentPurpose"],
+  // A web vital carries a metric name + a number and NOTHING else — no
+  // coordinate, no device string. The closed shape is what proves that.
+  webvital: ["ts", "type", "path", "sessionId", "geo", "metric", "value"],
 };
 
 interface Case {
@@ -219,6 +222,60 @@ const CASES: Case[] = [
     name: "garbage (non-JSON) body answers {ok:true} and stores nothing",
     ip: "198.51.100.14",
     body: "not json at all {{{",
+    persisted: false,
+  },
+  // --- web vitals (E15 follow-up) -----------------------------------------
+  // This endpoint is PUBLIC, so every one of these is an ingest-boundary
+  // guarantee, not a client courtesy: an unbounded or non-numeric value would
+  // let anyone poison the p75 the Chamber reads off the dashboard.
+  {
+    name: "webvital LCP persists with the exact closed shape, value rounded to ms",
+    ip: "198.51.100.15",
+    body: { type: "webvital", metric: "LCP", value: 2431.77, path: "/ferry", sessionId: SID("wv") },
+    persisted: { type: "webvital", expect: { path: "/ferry", metric: "LCP", value: 2432 } },
+  },
+  {
+    name: "webvital CLS keeps 3 decimals (it is a score, not milliseconds)",
+    ip: "198.51.100.16",
+    body: { type: "webvital", metric: "CLS", value: 0.04829, path: "/", sessionId: SID("cls") },
+    persisted: { type: "webvital", expect: { metric: "CLS", value: 0.048 } },
+  },
+  {
+    name: "webvital with an unknown metric name is dropped",
+    ip: "198.51.100.17",
+    body: { type: "webvital", metric: "TTFB", value: 120, path: "/", sessionId: SID("bad-m") },
+    persisted: false,
+  },
+  {
+    name: "webvital with a non-numeric value is dropped",
+    ip: "198.51.100.18",
+    body: { type: "webvital", metric: "LCP", value: "fast", path: "/", sessionId: SID("nan-v") },
+    persisted: false,
+  },
+  {
+    name: "webvital with a negative value is dropped",
+    ip: "198.51.100.19",
+    body: { type: "webvital", metric: "LCP", value: -1, path: "/", sessionId: SID("neg-v") },
+    persisted: false,
+  },
+  {
+    name: "webvital above the sanity ceiling is DROPPED, not clamped",
+    ip: "198.51.100.20",
+    body: { type: "webvital", metric: "LCP", value: 9_999_999, path: "/", sessionId: SID("huge") },
+    // Clamping would invent a plausible ceiling value and drag the p75 with
+    // it; dropping loses one row and keeps the distribution honest.
+    persisted: false,
+  },
+  {
+    name: "webvital on a sensitive path is dropped like every other event",
+    ip: "198.51.100.21",
+    body: {
+      type: "webvital",
+      metric: "LCP",
+      value: 1500,
+      path: "/assist-fixture/hours",
+      sessionId: SID("wv-sens"),
+    },
     persisted: false,
   },
 ];

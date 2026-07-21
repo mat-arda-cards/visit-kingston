@@ -23,13 +23,27 @@ implements `findByIdentifier` / `exportRecords` / `deleteOrAnonymize`; the
 | `worklist_item` | payload `contact` | Privacy/accuracy request contact (OPEN items only) | scrubbed at resolution | Postgres `worklist_item` |
 | `hunt-submissions` | *(no identifier)* | Photo + optional precise check-in location | 12 months | `record` + fs/blob photos |
 | `survey_response` | *(none — anonymous)* | LTAC survey answers | 36 months | Postgres `survey_response` |
-| `analytics_event` | *(none — anonymous)* | Pageviews / outbound / geo-ping (area only) / consent | 90 days (geo) / 25 months | Postgres `analytics_event` |
+| `analytics_event` | *(none — anonymous)* | Pageviews / outbound / geo-ping (area only) / consent / web vital (page timing) | 90 days (geo) / 25 months | Postgres `analytics_event` |
 | `quarantine` | *(none)* | Importer-parked failed-validation docs (may carry legacy contact fields) | resolved via runbook | Postgres `quarantine` |
 
 **Anonymous by construction:** survey and analytics hold no identifier tying a
 row to a person (a per-browser session id that resets on close is not one). A
 delete request against them is fulfilled by explanation, surfaced in the
 fulfillment UI.
+
+**Web vitals are page measurements, not people measurements.** A `webvital`
+row carries a metric name (`LCP`/`CLS`/`INP`) and a number the browser
+produced about the PAGE — how long the largest element took to paint, how much
+the layout moved. Nothing is read from the device: no coordinate, no user
+agent, no screen size, no fingerprint. It travels in the same anonymous
+envelope every other analytics row uses and adds no field that could single
+anyone out, which is why it is **not** gated behind the geo-consent card
+(`src/lib/privacy/consent.ts` — that card governs *location*, purposes
+`analytics` and `hunt`). Asking a visitor to consent to a number that is not
+about them would misdescribe what they were agreeing to. Values are validated
+and bounded at the ingest boundary, never trusted from the client; the closed
+shape is pinned by the table-driven suite in
+`src/app/api/__tests__/track-route.test.ts`.
 
 ## 2. The registration contract — no unregistered PII store
 

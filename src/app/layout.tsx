@@ -3,7 +3,7 @@ import { Inter, Outfit, Satisfy } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
-import { Tracker } from "@/components/tracker";
+import { Tracker, WebVitals } from "@/components/tracker";
 import PwaClient from "@/components/pwa";
 import { getCopyOverrides } from "@/lib/stores/site-store";
 import { getEffectiveHiddenPaths } from "@/lib/page-visibility";
@@ -125,6 +125,7 @@ export default async function RootLayout({
         />
         <CopyProvider overrides={copyOverrides}>
           <Tracker />
+          <WebVitals />
           <PwaClient renderedAt={renderedAt} />
           <SiteNav hiddenPaths={hiddenPaths} />
           {/* id="main" is the skip link's target (E14). tabIndex={-1} makes it

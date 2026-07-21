@@ -45,7 +45,7 @@ export interface AnalyticsGeo {
 export interface AnalyticsEvent {
   /** ISO 8601 timestamp, set server-side. */
   ts: string;
-  type: "pageview" | "outbound" | "geo-ping" | "consent";
+  type: "pageview" | "outbound" | "geo-ping" | "consent" | "webvital";
   /** In-app pathname, e.g. "/eat". */
   path: string;
   /** Random client-generated id (sessionStorage), rotates per browser session. */
@@ -73,7 +73,57 @@ export interface AnalyticsEvent {
    * say which one — an analytics grant is not a hunt grant.
    */
   consentPurpose?: string;
+  /**
+   * Webvital only: which Core Web Vital this row carries (see WEB_VITAL_SPECS).
+   *
+   * WHY THIS IS NOT A NEW PRIVACY SURFACE: a web vital is a timing produced by
+   * the browser about the PAGE, not about the person — no coordinate, no
+   * identifier, no device fingerprint, nothing read from the device. It rides
+   * the existing anonymous-by-construction store (same ts/path/sessionId/geo
+   * envelope every other event already carries) and adds no field that could
+   * single anyone out. Geo consent (src/lib/privacy/consent.ts) gates LOCATION
+   * — `vk-consent-geo`, purposes "analytics" | "hunt" — so it does not gate
+   * this, and deliberately: asking for consent to collect a number that is not
+   * about the visitor would misrepresent what the consent card is for.
+   */
+  metric?: WebVitalMetric;
+  /**
+   * Webvital only: the measured value — MILLISECONDS for LCP/INP, and a
+   * unitless layout-shift score for CLS. Clamped and rounded at the ingest
+   * boundary (see the route), never trusted raw from the client.
+   */
+  value?: number;
 }
+
+/**
+ * The Core Web Vitals we record, with the thresholds Google publishes for
+ * each. `good`/`poor` are the standard boundaries: at or below `good` is
+ * passing, above `poor` is failing, between them is "needs improvement".
+ *
+ * LCP's 2500ms boundary is the same number as NFR-1 / M-18-02 — which is the
+ * whole point of collecting this. The Lighthouse gate measures a SIMULATED lab
+ * page load; these rows measure the ferry-queue phone that actually loaded it.
+ */
+export const WEB_VITAL_SPECS = {
+  LCP: { label: "Largest Contentful Paint", unit: "ms", good: 2500, poor: 4000 },
+  CLS: { label: "Cumulative Layout Shift", unit: "", good: 0.1, poor: 0.25 },
+  INP: { label: "Interaction to Next Paint", unit: "ms", good: 200, poor: 500 },
+} as const;
+
+export type WebVitalMetric = keyof typeof WEB_VITAL_SPECS;
+
+export const WEB_VITAL_METRICS = Object.keys(WEB_VITAL_SPECS) as WebVitalMetric[];
+
+/**
+ * Below this many samples a percentile is noise, so the dashboard shows the
+ * sample count instead of a number that looks authoritative and is not.
+ *
+ * This is a STATISTICAL floor, not the E11 privacy k-floor (K_FLOOR, which
+ * keys on distinct sessions to stop a small geo bucket identifying someone).
+ * Kept separate on purpose: timings are not identifying, so borrowing the
+ * privacy constant here would blur why each threshold exists.
+ */
+export const WEB_VITAL_MIN_SAMPLES = 10;
 
 // ---------------------------------------------------------------------------
 // Named-area classifier for opt-in geo-pings.
@@ -213,6 +263,46 @@ export interface AnalyticsSummary {
   }[];
   /** Pacific-time days, ascending. */
   byDay: { day: string; pageviews: number; outboundClicks: number; sessions: number }[];
+  /**
+   * Core Web Vitals from REAL visitors, one row per metric, in WEB_VITAL_SPECS
+   * order. p75 is the Core Web Vitals reporting standard (not the mean — one
+   * catastrophic load should not be averaged away, and the median hides the
+   * bad quartile the standard is designed to expose).
+   */
+  webVitals: {
+    metric: WebVitalMetric;
+    p75: number;
+    samples: number;
+    /** False until `samples` >= WEB_VITAL_MIN_SAMPLES — render the count, not p75. */
+    reportable: boolean;
+    rating: "good" | "needs-improvement" | "poor";
+  }[];
+  /**
+   * p75 LCP per page, worst first — answers "which page is slow for real
+   * people", which the lab gate cannot (it measures four hand-picked URLs).
+   * Only paths clearing WEB_VITAL_MIN_SAMPLES appear.
+   */
+  lcpByPath: { path: string; p75: number; samples: number }[];
+}
+
+/**
+ * Nearest-rank p75: the smallest value with at least 75% of samples at or
+ * below it. Nearest-rank (not interpolated) because it always returns a value
+ * a real visitor actually experienced — which is what you want when the next
+ * question is always "so how slow was it for them?".
+ */
+export function percentile75(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil(0.75 * sorted.length);
+  return sorted[Math.max(0, rank - 1)];
+}
+
+function rateVital(metric: WebVitalMetric, p75: number): "good" | "needs-improvement" | "poor" {
+  const spec = WEB_VITAL_SPECS[metric];
+  if (p75 <= spec.good) return "good";
+  if (p75 > spec.poor) return "poor";
+  return "needs-improvement";
 }
 
 export async function saveEvent(event: AnalyticsEvent): Promise<void> {
@@ -248,6 +338,11 @@ export async function summarize(): Promise<AnalyticsSummary> {
     { pageviews: number; outboundClicks: number; sessions: Set<string> }
   >();
 
+  // Raw web-vital samples, kept as arrays because a percentile needs the whole
+  // distribution — you cannot accumulate a p75 the way you accumulate a count.
+  const vitalSamples = new Map<WebVitalMetric, number[]>();
+  const lcpByPathSamples = new Map<string, number[]>();
+
   let pageviews = 0;
   let outboundClicks = 0;
   let geoPings = 0;
@@ -276,6 +371,21 @@ export async function summarize(): Promise<AnalyticsSummary> {
       byArea.set(area, areaEntry);
     } else if (e.type === "consent") {
       consents++;
+    } else if (e.type === "webvital") {
+      // Defensive: rows written before this event type existed, or by a future
+      // client, may lack either field. A summary must never throw on old data.
+      const metric = e.metric;
+      const value = e.value;
+      if (metric && WEB_VITAL_SPECS[metric] && typeof value === "number" && Number.isFinite(value)) {
+        const bucket = vitalSamples.get(metric) ?? [];
+        bucket.push(value);
+        vitalSamples.set(metric, bucket);
+        if (metric === "LCP") {
+          const pathBucket = lcpByPathSamples.get(e.path) ?? [];
+          pathBucket.push(value);
+          lcpByPathSamples.set(e.path, pathBucket);
+        }
+      }
     }
 
     const geo = e.geo ?? { source: "unknown" as const };
@@ -369,5 +479,23 @@ export async function summarize(): Promise<AnalyticsSummary> {
         sessions: d.sessions.size,
       }))
       .sort((a, b) => a.day.localeCompare(b.day)),
+    // One row per metric ALWAYS, even with zero samples — a missing row reads
+    // as "we forgot to measure", whereas samples: 0 reads as "nobody has sent
+    // one yet", which is the honest state right after this ships.
+    webVitals: WEB_VITAL_METRICS.map((metric) => {
+      const samples = vitalSamples.get(metric) ?? [];
+      const p75 = percentile75(samples);
+      return {
+        metric,
+        p75,
+        samples: samples.length,
+        reportable: samples.length >= WEB_VITAL_MIN_SAMPLES,
+        rating: rateVital(metric, p75),
+      };
+    }),
+    lcpByPath: [...lcpByPathSamples.entries()]
+      .filter(([, values]) => values.length >= WEB_VITAL_MIN_SAMPLES)
+      .map(([path, values]) => ({ path, p75: percentile75(values), samples: values.length }))
+      .sort((a, b) => b.p75 - a.p75),
   };
 }

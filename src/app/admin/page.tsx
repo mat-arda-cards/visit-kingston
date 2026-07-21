@@ -7,7 +7,13 @@
 // NOTE: access is gated by src/app/admin/layout.tsx (admin role required).
 
 import type { Metadata } from "next";
-import { areaLabel, summarize, type AnalyticsSummary } from "@/lib/analytics-store";
+import {
+  areaLabel,
+  summarize,
+  WEB_VITAL_MIN_SAMPLES,
+  WEB_VITAL_SPECS,
+  type AnalyticsSummary,
+} from "@/lib/analytics-store";
 import { BELOW_K_BUCKET_LABEL, K_FLOOR } from "@/lib/privacy/policy";
 import { surveyStore } from "@/lib/survey-store";
 import { Badge, Callout, Card, PageHeader, Section } from "@/components/ui";
@@ -59,6 +65,30 @@ function StatCard({ value, label, sub }: { value: string; label: string; sub?: s
   );
 }
 
+/** Format a vital for display: ms get "s", CLS stays a bare score. */
+function vitalValue(metric: keyof typeof WEB_VITAL_SPECS, p75: number): string {
+  return WEB_VITAL_SPECS[metric].unit === "ms" ? `${(p75 / 1000).toFixed(2)}s` : p75.toFixed(3);
+}
+
+/**
+ * Rating chip. The WORD carries the meaning and the color only reinforces it
+ * (E14): a red/green-only signal is invisible to a colorblind board member
+ * reading this dashboard, and there is no red in the brand palette anyway.
+ */
+function RatingChip({ rating }: { rating: "good" | "needs-improvement" | "poor" }) {
+  // SOLID fills with white text, never a tint + colored text: the E14 static
+  // invariant (tests/unit/a11y-static-invariants.test.ts) rejects text-fern on
+  // a fern tint at 4.29:1. bg-fern/white is 4.86:1, coral 5:1, coral-deep 6.5:1.
+  const copy = {
+    good: { text: "Good", cls: "bg-fern text-white" },
+    "needs-improvement": { text: "Needs work", cls: "bg-coral text-white" },
+    poor: { text: "Poor", cls: "bg-coral-deep text-white" },
+  }[rating];
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${copy.cls}`}>{copy.text}</span>
+  );
+}
+
 function CountRow({
   primary,
   secondary,
@@ -66,7 +96,9 @@ function CountRow({
 }: {
   primary: string;
   secondary?: string;
-  count: number;
+  /** A plain tally, or a pre-formatted value where a bare number would be
+   *  ambiguous — "3.22s" reads as a duration, "3220" reads as a count. */
+  count: number | string;
 }) {
   return (
     <li className="flex items-baseline justify-between gap-3 py-2">
@@ -155,6 +187,50 @@ export default async function AdminPage() {
             }
           />
         </div>
+      </Section>
+
+      <Section
+        title="Real-visitor page speed"
+        subtitle={`Measured on visitors' own phones, not a test machine. The 75th percentile is the industry standard: three of every four page loads were at least this fast. Shown once a metric has ${WEB_VITAL_MIN_SAMPLES} samples.`}
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {analytics.webVitals.map((v) => (
+            <Card key={v.metric}>
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-3xl font-semibold text-sound-deep">
+                  {v.reportable ? vitalValue(v.metric, v.p75) : "—"}
+                </p>
+                {v.reportable && <RatingChip rating={v.rating} />}
+              </div>
+              <p className="mt-1 text-sm font-medium text-ink">
+                {WEB_VITAL_SPECS[v.metric].label}
+              </p>
+              <p className="mt-1 text-xs text-ink-soft">
+                {v.reportable
+                  ? `${v.samples} loads measured · target ${vitalValue(v.metric, WEB_VITAL_SPECS[v.metric].good)} or faster`
+                  : `${v.samples} of ${WEB_VITAL_MIN_SAMPLES} loads needed`}
+              </p>
+            </Card>
+          ))}
+        </div>
+        {analytics.lcpByPath.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-medium text-ink">Slowest pages (LCP, 75th percentile)</p>
+            <ul className="divide-y divide-sand">
+              {analytics.lcpByPath.slice(0, TOP_N).map((row) => (
+                <CountRow
+                  key={row.path}
+                  primary={row.path}
+                  secondary={`${row.samples} loads`}
+                  // Formatted, not raw ms: this dashboard is read by Chamber
+                  // staff, and a bare "3220" next to a "15 loads" label reads
+                  // as another tally rather than a duration.
+                  count={vitalValue("LCP", row.p75)}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
       </Section>
 
       <Section
