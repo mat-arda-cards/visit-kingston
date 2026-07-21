@@ -7,11 +7,20 @@
 // generation caching so it re-reads the env on every request.
 import type { MetadataRoute } from "next";
 
+import { siteUrl } from "@/lib/site-url";
+
 export const dynamic = "force-dynamic";
 
 export default function robots(): MetadataRoute.Robots {
   if (process.env.NOINDEX === "1") {
+    // Staging: no sitemap either — advertising one invites crawling the very
+    // host we are trying to keep out of search.
     return { rules: { userAgent: "*", disallow: "/" } };
   }
-  return { rules: { userAgent: "*", disallow: ["/admin", "/portal", "/api"] } };
+  return {
+    rules: { userAgent: "*", disallow: ["/admin", "/portal", "/api"] },
+    // Absolute by spec — a sitemap directive must be a full URL, and it has to
+    // agree with the origin in metadataBase (both come from siteUrl()).
+    sitemap: `${siteUrl()}/sitemap.xml`,
+  };
 }

@@ -8,7 +8,7 @@
 // Server-safe: renders a single <script type="application/ld+json"> tag.
 // Not wired into any page here — pages import LocalBusinessJsonLd themselves.
 
-import type { Restaurant, WeeklyHours } from "@/lib/types";
+import type { EventItem, Restaurant, WeeklyHours } from "@/lib/types";
 
 const DAY_ORDER: { key: keyof WeeklyHours; dayOfWeek: string }[] = [
   { key: "mon", dayOfWeek: "https://schema.org/Monday" },
@@ -61,6 +61,49 @@ function postalAddress(address: string) {
     ...(zip ? { postalCode: zip } : {}),
     addressCountry: "US",
   };
+}
+
+/**
+ * schema.org Event for the public calendar (M-13-02 / M-13-03).
+ *
+ * `location` is ALWAYS emitted — `venue` is required on EventItem, so there is
+ * always a Place name. `address` is optional, and when it is absent we omit the
+ * address property entirely rather than inventing one: a fabricated street for
+ * an event is worse than an incomplete record, because a visitor may drive to
+ * it. Google's Rich Results test warns about the missing address; that warning
+ * is the honest outcome and is accepted.
+ *
+ * Event text is member-submitted, so the same `<` escaping as
+ * LocalBusinessJsonLd applies — a description containing "</script>" must not
+ * be able to close the tag early.
+ */
+export function EventJsonLd({ event }: { event: EventItem }) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: event.title,
+    startDate: event.start,
+    ...(event.end ? { endDate: event.end } : {}),
+    location: {
+      "@type": "Place" as const,
+      name: event.venue,
+      ...(event.address ? { address: postalAddress(event.address) } : {}),
+    },
+    ...(event.organizer
+      ? { organizer: { "@type": "Organization" as const, name: event.organizer } }
+      : {}),
+    ...(event.url ? { url: event.url } : {}),
+    ...(event.description ? { description: event.description } : {}),
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify(data).replace(/</g, "\\u003c"),
+      }}
+    />
+  );
 }
 
 export function LocalBusinessJsonLd({ restaurant }: { restaurant: Restaurant }) {
