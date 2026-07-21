@@ -21,6 +21,7 @@ import "server-only";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { getDb, type Db } from "./client";
+import { heldRecordIds } from "./privacy-delete";
 import { audit, invites, orgs, users, type Role, type OrgKind } from "./schema";
 
 export type UserRow = typeof users.$inferSelect;
@@ -274,12 +275,22 @@ export async function anonymizeInvitesByEmail(
   email: string,
   entry: Omit<AuthAuditEntry, "store" | "recordId" | "before" | "after" | "action">,
 ): Promise<number> {
-  return getDb().transaction(async (tx) => {
-    const rows = await tx
-      .select()
-      .from(invites)
-      .where(sql`lower(${invites.email}) = lower(${email})`);
-    for (const inv of rows) {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(invites)
+    .where(sql`lower(${invites.email}) = lower(${email})`);
+  // FR-A92: skip any invite under legal hold. Computed BEFORE the transaction
+  // — heldRecordIds queries the global handle, which would hang PGlite's
+  // single connection if run while a transaction is open on it.
+  const held = await heldRecordIds(
+    "invites",
+    rows.map((r) => r.code),
+  );
+  const toScrub = rows.filter((r) => !held.has(r.code));
+  if (toScrub.length === 0) return 0;
+  await db.transaction(async (tx) => {
+    for (const inv of toScrub) {
       await tx.update(invites).set({ email: null, note: null }).where(eq(invites.code, inv.code));
       await appendAuthAudit(
         {
@@ -293,8 +304,8 @@ export async function anonymizeInvitesByEmail(
         tx,
       );
     }
-    return rows.length;
   });
+  return toScrub.length;
 }
 
 /** Invites whose contact email matches (case-insensitive) — the access-request

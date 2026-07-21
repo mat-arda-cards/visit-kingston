@@ -7,9 +7,18 @@
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+// Mutable auth so a gate-removal mutation can't survive: the mock enforces the
+// real admin contract (non-admin → 401), and a test flips it to prove the gate.
+const authState = vi.hoisted(() => ({
+  user: { email: "admin@example.test", role: "admin" } as { email: string; role: string } | null,
+}));
 vi.mock("@/lib/auth", () => ({
-  requireAdmin: async () => null,
-  getSessionUser: async () => ({ email: "admin@example.test" }),
+  getSessionUser: vi.fn(async () => authState.user),
+  requireAdmin: vi.fn(async () =>
+    authState.user?.role === "admin"
+      ? null
+      : Response.json({ error: "Sign in first" }, { status: 401 }),
+  ),
 }));
 
 import { POST } from "@/app/api/admin/privacy/fulfill/route";
@@ -104,9 +113,34 @@ describe("privacy fulfillment", () => {
     expect((await getWorklistItem(item.id))?.state).toBe("resolved");
   });
 
-  it("rejects a non-privacy item and an unknown op", async () => {
+  it("rejects a missing item, a REAL non-privacy item, and an unknown op", async () => {
     expect((await post({ op: "access", itemId: crypto.randomUUID() })).status).toBe(404);
+    // A real item of the wrong type must hit the type guard, not just 404-on-missing.
+    const { item: moderationItem } = await createWorklistItem(
+      {
+        type: "report_inaccurate",
+        subjectStore: "restaurants",
+        subjectId: "cafe",
+        subjectLabel: "The Cafe",
+        payload: { messages: [{ message: "wrong hours", at: new Date().toISOString() }], count: 1 },
+      },
+      { actor: "public", source: "public" },
+    );
+    expect((await post({ op: "delete", itemId: moderationItem.id })).status).toBe(404);
     const item = await makeRequest("access", "x@example.test");
     expect((await post({ op: "frobnicate", itemId: item.id })).status).toBe(400);
+  });
+
+  it("enforces the admin gate: a non-admin is 401'd on every op", async () => {
+    const item = await makeRequest("access", "gate@example.test");
+    const saved = authState.user;
+    authState.user = null; // signed out
+    try {
+      for (const op of ["access", "delete", "hold-set", "hold-clear"]) {
+        expect((await post({ op, itemId: item.id, reason: "x" })).status).toBe(401);
+      }
+    } finally {
+      authState.user = saved;
+    }
   });
 });

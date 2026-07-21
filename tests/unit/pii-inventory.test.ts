@@ -93,8 +93,30 @@ describe("PII inventory handlers round-trip against real data", () => {
     expect(userExport.records).toHaveLength(1);
     expect(JSON.stringify(userExport.records)).not.toContain("scrypt");
     expect(JSON.stringify(userExport.records)).toContain(EMAIL);
-    expect((await store("invites").exportRecords(EMAIL)).records).toHaveLength(1);
+    const inviteExport = await store("invites").exportRecords(EMAIL);
+    expect(inviteExport.records).toHaveLength(1);
+    // The invite's `code` is a live bearer redemption token — NEVER exported.
+    expect(JSON.stringify(inviteExport.records)).not.toContain("inv-req");
     expect((await store("charities").exportRecords(EMAIL)).records).toHaveLength(1);
+  });
+
+  it("a legal hold on the account BLOCKS anonymize (FR-A92)", async () => {
+    const { setLegalHold, clearLegalHold } = await import("@/lib/db/privacy-delete");
+    const HOLD_EMAIL = "held-user@example.test";
+    await insertUser(
+      { id: "u-held", email: HOLD_EMAIL, name: "Held", role: "viewer", orgId: null, passwordHash: "scrypt$h$h" },
+      { actor: "admin", action: "profile-update", source: "admin" },
+    );
+    await setLegalHold("users", "u-held", "litigation", "admin@example.test");
+    const res = await store("users").deleteOrAnonymize(HOLD_EMAIL, "admin@example.test");
+    expect(res.affected).toBe(0);
+    expect(res.note).toMatch(/legal hold/i);
+    // Still findable by email — the account was NOT anonymized.
+    expect(await findUserByEmail(HOLD_EMAIL)).toBeDefined();
+    // Clearing the hold lets it proceed.
+    await clearLegalHold("users", "u-held", "admin@example.test");
+    expect((await store("users").deleteOrAnonymize(HOLD_EMAIL, "admin@example.test")).affected).toBe(1);
+    expect(await findUserByEmail(HOLD_EMAIL)).toBeUndefined();
   });
 
   it("no-identifier stores return an explanatory note, not silent nothing", async () => {
@@ -122,5 +144,38 @@ describe("PII inventory handlers round-trip against real data", () => {
     expect((await store("invites").findByIdentifier(EMAIL))).toHaveLength(0);
     await store("charities").deleteOrAnonymize(EMAIL, "admin");
     expect((await store("charities").findByIdentifier(EMAIL))).toHaveLength(0);
+  });
+});
+
+describe("charity delete does NOT re-immortalize the contact email (metadata-only)", () => {
+  it("the scrub audit row carries field names only, never the erased email", async () => {
+    const fresh = await createTestDb();
+    try {
+      const { audit } = await import("@/lib/db/schema");
+      const CE = "charity-contact@example.test";
+      await saveCharity(
+        { id: "c-leak", name: "Leaky Cause", mission: "help", contactEmail: CE },
+        { actor: "admin", source: "admin" },
+      );
+      const inv = PII_STORES.find((s) => s.store === "charities")!;
+      const res = await inv.deleteOrAnonymize(CE, "admin@example.test");
+      expect(res.affected).toBe(1);
+      // Live record no longer carries the email…
+      expect(await inv.findByIdentifier(CE)).toHaveLength(0);
+      // …and the scrub wrote a metadata-only row (field NAMES, not the value).
+      const rows = await fresh.db.select().from(audit);
+      const scrub = rows.find((a) => a.action === "privacy-field-scrub");
+      expect(scrub).toBeDefined();
+      expect(JSON.stringify(scrub!.after ?? {})).toContain("contactEmail"); // the field name
+      expect(JSON.stringify(scrub!.after ?? {})).not.toContain(CE); // NOT the value
+      // No audit row created by the scrub holds the email in a before/after doc.
+      const scrubRelated = rows.filter((a) => a.recordId === "c-leak" && a.action === "privacy-field-scrub");
+      for (const r of scrubRelated) {
+        const body = JSON.stringify(r.after ?? {}) + JSON.stringify(r.before ?? {});
+        expect(body).not.toContain(CE);
+      }
+    } finally {
+      await fresh.close();
+    }
   });
 });
