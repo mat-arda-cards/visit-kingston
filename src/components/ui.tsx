@@ -66,7 +66,10 @@ const badgeTones = {
   navy: "bg-sound text-white",
   teal: "bg-tide/10 text-tide-deep",
   coral: "bg-coral/10 text-coral-deep",
-  green: "bg-fern/10 text-fern",
+  // E14 contrast: text-fern on bg-fern/10 measured 4.29:1 at this 12px size —
+  // under AA. Solid fern with white text is 4.81:1 and matches the navy tone's
+  // shape. Fixed here, at the usage site; no --color-* token value changed.
+  green: "bg-fern text-white",
   sand: "bg-sand text-ink",
 } as const;
 
@@ -99,7 +102,9 @@ export function Callout({
   return (
     <div className={`rounded-xl border-l-4 p-4 ${border}`}>
       <p className="font-semibold text-sound-deep">{title}</p>
-      <div className="mt-1 text-sm text-ink-soft">{children}</div>
+      {/* E14 contrast: text-ink-soft on the tinted fill measured 4.38:1 (under
+          AA at 14px). text-ink on the same fill is 14.5:1. */}
+      <div className="mt-1 text-sm text-ink">{children}</div>
     </div>
   );
 }

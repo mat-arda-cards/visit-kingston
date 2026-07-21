@@ -202,7 +202,12 @@ export default async function Home() {
               className="group relative overflow-hidden rounded-3xl border border-white/60 bg-white/40 p-5 backdrop-blur-md shadow-[0_4px_24px_rgba(11,25,44,0.06)] transition-all duration-300 hover:-translate-y-1 hover:bg-white/60 hover:shadow-[0_8px_32px_rgba(11,25,44,0.12)]"
             >
               <div className="absolute inset-0 -z-10 bg-gradient-to-br from-white/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-              <span className="text-3xl drop-shadow-sm">{f.icon}</span>
+              {/* E14: decorative — the card title already names the
+                  destination, so the glyph must not double-read into the
+                  link's accessible name. */}
+              <span aria-hidden="true" className="text-3xl drop-shadow-sm">
+                {f.icon}
+              </span>
               <p className="font-display mt-3 text-lg font-semibold text-sound-deep group-hover:text-tide-deep">
                 {f.title}
               </p>

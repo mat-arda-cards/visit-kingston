@@ -244,9 +244,9 @@ export function RecordHistory({
 
       {open && (
         <div className="mt-2 space-y-2">
-          {error && <p className="text-sm font-medium text-coral-deep">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-coral-deep">{error}</p>}
           {restored && (
-            <p className="text-sm font-medium text-fern">
+            <p role="status" className="text-sm font-medium text-fern">
               Restored — saved as a new change.{" "}
               <button
                 onClick={() => window.location.reload()}

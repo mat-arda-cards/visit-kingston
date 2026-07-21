@@ -3,7 +3,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+// E14: both "More" surfaces are DISCLOSURES, not dialogs — no focus trap, no
+// `role="menu"`. What they owe the keyboard is Escape-to-close with focus
+// returned to the trigger, close-on-outside-click, and Tab reaching every
+// item. The ids below back `aria-controls` on the two triggers.
+const MORE_MENU_ID = "site-nav-more-menu";
+const MORE_SHEET_ID = "site-nav-more-sheet";
 
 const primaryLinks = [
   { href: "/ferry", label: "Ferry" },
@@ -27,6 +34,57 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  const moreWrapRef = useRef<HTMLDivElement>(null);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetTriggerRef = useRef<HTMLButtonElement>(null);
+  // Only pull focus back to the sheet trigger on a real close — never on the
+  // first render, which would steal focus from wherever the page put it.
+  const sheetWasOpen = useRef(false);
+
+  // Desktop dropdown. The previous implementation closed on `onBlur` behind a
+  // 150 ms timer, which raced the click it was meant to allow and hid the menu
+  // the moment a keyboard user tabbed into it. Escape + outside-click instead.
+  // (E14 AC 11 greps this file for that timer API — keep it out, comments too.)
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onPointerDown = (event: Event) => {
+      if (!moreWrapRef.current?.contains(event.target as Node)) setMoreOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMoreOpen(false);
+      moreTriggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [moreOpen]);
+
+  // Mobile sheet: Escape closes it.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSheetOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [sheetOpen]);
+
+  // Focus follows the sheet: into its first link on open, back to the toggle
+  // on close, so a keyboard user is never dropped on <body>.
+  useEffect(() => {
+    if (sheetOpen) {
+      sheetRef.current?.querySelector<HTMLAnchorElement>("a[href]")?.focus();
+    } else if (sheetWasOpen.current) {
+      sheetTriggerRef.current?.focus();
+    }
+    sheetWasOpen.current = sheetOpen;
+  }, [sheetOpen]);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -63,6 +121,7 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
               <Link
                 key={l.href}
                 href={l.href}
+                aria-current={isActive(l.href) ? "page" : undefined}
                 className={`font-nav rounded-lg px-3 py-2 text-[0.8125rem] font-semibold tracking-wide uppercase transition-colors ${
                   isActive(l.href)
                     ? "bg-sound text-white"
@@ -72,25 +131,31 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
                 {l.label}
               </Link>
             ))}
-            <div className="relative">
+            <div className="relative" ref={moreWrapRef}>
               <button
+                type="button"
+                ref={moreTriggerRef}
                 onClick={() => setMoreOpen((v) => !v)}
-                onBlur={() => setTimeout(() => setMoreOpen(false), 150)}
                 className={`font-nav rounded-lg px-3 py-2 text-[0.8125rem] font-semibold tracking-wide uppercase transition-colors ${
                   more.some((l) => isActive(l.href))
                     ? "bg-sound text-white"
                     : "text-ink hover:bg-seaglass/40 hover:text-sound"
                 }`}
                 aria-expanded={moreOpen}
+                aria-controls={MORE_MENU_ID}
               >
-                More ▾
+                More <span aria-hidden="true">▾</span>
               </button>
               {moreOpen && (
-                <div className="absolute right-0 mt-1 w-48 rounded-xl border border-sand bg-white py-2 shadow-lg">
+                <div
+                  id={MORE_MENU_ID}
+                  className="absolute right-0 mt-1 w-48 rounded-xl border border-sand bg-white py-2 shadow-lg"
+                >
                   {more.map((l) => (
                     <Link
                       key={l.href}
                       href={l.href}
+                      aria-current={isActive(l.href) ? "page" : undefined}
                       className="block px-4 py-2 text-sm text-ink hover:bg-seaglass/30 hover:text-sound"
                       onClick={() => setMoreOpen(false)}
                     >
@@ -117,37 +182,62 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
             gridTemplateColumns: `repeat(${bottomBarLinks.length + 1}, minmax(0, 1fr))`,
           }}
         >
-          {bottomBarLinks.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              onClick={() => setSheetOpen(false)}
-              className={`flex flex-col items-center gap-0.5 py-2.5 text-[0.6875rem] font-medium ${
-                (l.href === "/" ? pathname === "/" : isActive(l.href)) && !sheetOpen
-                  ? "text-sound"
-                  : "text-ink-soft"
-              }`}
-            >
-              <span className="text-lg leading-none">{l.icon}</span>
-              {l.label}
-            </Link>
-          ))}
+          {bottomBarLinks.map((l) => {
+            const current = l.href === "/" ? pathname === "/" : isActive(l.href);
+            // The tab highlight was colour-only (text-sound vs text-ink-soft at
+            // one weight) — M-14-04. Weight plus the marker bar below now carry
+            // it for anyone who can't separate the two hues.
+            const lit = current && !sheetOpen;
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                onClick={() => setSheetOpen(false)}
+                aria-current={current ? "page" : undefined}
+                className={`flex flex-col items-center gap-0.5 py-2.5 text-[0.6875rem] ${
+                  lit ? "font-semibold text-sound" : "font-medium text-ink-soft"
+                }`}
+              >
+                <span aria-hidden="true" className="text-lg leading-none">
+                  {l.icon}
+                </span>
+                {l.label}
+                <span
+                  aria-hidden="true"
+                  className={`h-0.5 w-5 rounded-full ${lit ? "bg-sound" : "bg-transparent"}`}
+                />
+              </Link>
+            );
+          })}
           <button
+            type="button"
+            ref={sheetTriggerRef}
             onClick={() => setSheetOpen((v) => !v)}
-            className={`flex flex-col items-center gap-0.5 py-2.5 text-[0.6875rem] font-medium ${
-              sheetOpen ? "text-sound" : "text-ink-soft"
+            className={`flex flex-col items-center gap-0.5 py-2.5 text-[0.6875rem] ${
+              sheetOpen ? "font-semibold text-sound" : "font-medium text-ink-soft"
             }`}
             aria-expanded={sheetOpen}
+            aria-controls={MORE_SHEET_ID}
           >
-            <span className="text-lg leading-none">☰</span>
+            <span aria-hidden="true" className="text-lg leading-none">
+              ☰
+            </span>
             More
+            <span
+              aria-hidden="true"
+              className={`h-0.5 w-5 rounded-full ${sheetOpen ? "bg-sound" : "bg-transparent"}`}
+            />
           </button>
         </div>
       </nav>
 
       {/* Mobile "More" sheet */}
       {sheetOpen && (
-        <div className="fixed inset-x-0 bottom-[calc(3.4rem+env(safe-area-inset-bottom))] z-30 border-t border-sand bg-white p-4 shadow-[0_-8px_24px_rgba(22,64,94,0.12)] md:hidden">
+        <div
+          id={MORE_SHEET_ID}
+          ref={sheetRef}
+          className="fixed inset-x-0 bottom-[calc(3.4rem+env(safe-area-inset-bottom))] z-30 border-t border-sand bg-white p-4 shadow-[0_-8px_24px_rgba(22,64,94,0.12)] md:hidden"
+        >
           <div className="grid grid-cols-2 gap-2">
             {[...primary.filter((l) => !["/ferry", "/eat", "/events"].includes(l.href)), ...more].map(
               (l) => (
@@ -155,6 +245,7 @@ export function SiteNav({ hiddenPaths = [] }: { hiddenPaths?: string[] }) {
                   key={l.href}
                   href={l.href}
                   onClick={() => setSheetOpen(false)}
+                  aria-current={isActive(l.href) ? "page" : undefined}
                   className={`rounded-xl px-4 py-3 text-sm font-medium ${
                     isActive(l.href) ? "bg-sound text-white" : "bg-sand/60 text-ink"
                   }`}

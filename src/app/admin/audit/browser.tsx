@@ -255,8 +255,8 @@ export function AuditBrowser({
         </Card>
       )}
 
-      {error && <p className="text-sm font-medium text-coral-deep">{error}</p>}
-      {notice && <p className="text-sm font-medium text-fern">{notice}</p>}
+      {error && <p role="alert" className="text-sm font-medium text-coral-deep">{error}</p>}
+      {notice && <p role="status" className="text-sm font-medium text-fern">{notice}</p>}
 
       <Card>
         {page?.entries.length === 0 && !loading && (

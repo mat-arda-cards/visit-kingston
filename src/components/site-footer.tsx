@@ -48,9 +48,8 @@ export function SiteFooter({
             {copyText(copy, "footer.brand")}
           </p>
           <p className="mt-2 text-sm text-seaglass">
-            <RichText
-              text={copyText(copy, "footer.tagline")}
-            />
+            {/* E14: on-navy tone — the default link colour is 2.41:1 here. */}
+            <RichText tone="dark" text={copyText(copy, "footer.tagline")} />
           </p>
         </div>
         <div>
@@ -78,7 +77,7 @@ export function SiteFooter({
       <div className="border-t border-white/10">
         <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-4 text-xs text-seaglass/80 sm:flex-row sm:items-center sm:justify-between">
           <p>
-            <RichText text={copyText(copy, "footer.credit")} />
+            <RichText tone="dark" text={copyText(copy, "footer.credit")} />
           </p>
           {/* Conspicuous on every page (MHMDA: notice linked from the home surface). */}
           <nav aria-label="Legal" className="flex gap-4">

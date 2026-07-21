@@ -57,6 +57,29 @@ export default async function ParkingPage() {
           always the legal authority — where a lot and a posted sign disagree, believe the
           sign. Chamber admins keep this map current in the portal at /admin/maps.
         </p>
+        {/* E14 (M-14-04): on the map canvas a lot's type is carried by its
+            marker colour alone, and the type name only appears inside a popup
+            you have to tap. feature-map.tsx is frozen, so the text alternative
+            lives here — same data, no colour required, and it prints. */}
+        {parkingMap?.builtins.parkingZones && parkingMap.builtins.parkingZones.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-lg font-semibold text-sound-deep">Every lot, in words</h3>
+            <p className="mt-1 text-sm text-ink-soft">
+              The same lots as the map above, with the parking type spelled out.
+            </p>
+            <ul className="mt-3 divide-y divide-sand rounded-2xl border border-sand bg-white">
+              {parkingMap.builtins.parkingZones.map((z) => (
+                <li key={z.id} className="px-4 py-3">
+                  <p className="text-sm font-semibold text-ink">{z.name}</p>
+                  <p className="text-sm text-ink-soft">
+                    {z.rule}
+                    {z.summary ? ` — ${z.summary}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Section>
 
       <Section title="Before you park for the ferry">
