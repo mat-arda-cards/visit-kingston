@@ -55,9 +55,19 @@ const copyKeyId = z.string().min(1).regex(/^\S+$/, "copy keys contain no whitesp
 /** site-pages ids are route paths, e.g. "/ferry". */
 const pagePathId = z.string().regex(/^\/\S*$/, "page ids are route paths starting with /");
 
+/** external-events ids are `${source}:${externalId}` and event-overrides ids
+ *  are `${occurrenceKey}|${occurrenceKey}` (E12) — colons, dots, and Tribe
+ *  global_id query strings are all legitimate. No whitespace is the rule. */
+const externalKeyId = z
+  .string()
+  .min(1)
+  .regex(/^\S+$/, "external event keys contain no whitespace");
+
 const ID_RULES: Record<string, z.ZodType<string>> = {
   "site-copy": copyKeyId,
   "site-pages": pagePathId,
+  "external-events": externalKeyId,
+  "event-overrides": externalKeyId,
 };
 
 export function idRuleFor(store: string): z.ZodType<string> {
@@ -96,6 +106,24 @@ export const STORE_SCHEMAS: Record<string, z.ZodType> = {
   // live-write nonempty rule is all that applies. `at` is always stamped by
   // recordMarker.
   "ops-markers": z.looseObject({ id: nonempty, at: nonempty }),
+  // E12 unified calendar. external-events mirrors already-published upstream
+  // calendars (NormalizedEvent docs, colon ids — see ID_RULES above); the
+  // structural floor is what every merged surface depends on existing.
+  "external-events": z.looseObject({
+    id: externalKeyId,
+    title: nonempty,
+    startIso: nonempty,
+    source: nonempty,
+    externalId: nonempty,
+  }),
+  "event-overrides": z.looseObject({
+    id: externalKeyId,
+    keyA: nonempty,
+    keyB: nonempty,
+    verdict: z.literal("not-duplicate"),
+  }),
+  "calendar-sources": z.looseObject({ id: entityId, enabled: z.boolean() }),
+  "unified-calendar": z.looseObject({ id: entityId }),
 };
 
 /** Unknown stores validate permissively ({ id } only) with a warn-once —
