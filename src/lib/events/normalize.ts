@@ -16,7 +16,7 @@
 
 import type { EventCategory, EventItem } from "@/lib/types";
 import type { ParsedVEvent } from "./ical-parse";
-import { toUtcBasic, wallTimeToInstant } from "./tz";
+import { toPacificOffsetIso, toUtcBasic, wallTimeToInstant } from "./tz";
 import type { EventSource, NormalizedEvent } from "./types";
 
 const CATEGORIES: readonly EventCategory[] = [
@@ -216,6 +216,8 @@ export function eventItemToNormalized(e: EventItem): NormalizedEvent {
     source: "in-app",
     externalId: e.id,
     occurrenceKey: `in-app:${e.id}:${toUtcBasic(e.start)}`,
+    ownerId: e.ownerId,
+    charityId: e.charityId,
   };
 }
 
@@ -228,13 +230,18 @@ export function externalEventId(occurrenceKey: string): string {
   return occurrenceKey.replace(/[^a-zA-Z0-9_-]+/g, "-");
 }
 
-/** NormalizedEvent → the EventItem shape every feed surface emits. */
+/** NormalizedEvent → the EventItem shape every feed surface emits. In-app
+ *  events keep their stored bytes verbatim (feed contract); external instants
+ *  re-serialize with the Pacific offset — the form the in-app store has
+ *  always used, so date-prefix slicing (the events page, pacificDateKey's
+ *  naive branch) reads the correct local date. */
 export function normalizedToEventItem(n: NormalizedEvent): EventItem {
+  const inApp = n.source === "in-app";
   return {
-    id: n.source === "in-app" ? n.externalId : externalEventId(n.occurrenceKey),
+    id: inApp ? n.externalId : externalEventId(n.occurrenceKey),
     title: n.title,
-    start: n.startIso,
-    end: n.endIso,
+    start: inApp ? n.startIso : toPacificOffsetIso(n.startIso),
+    end: inApp ? n.endIso : n.endIso && toPacificOffsetIso(n.endIso),
     venue: n.venue,
     address: n.address,
     description: n.description,

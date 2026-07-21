@@ -15,6 +15,8 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { can, getSessionUser } from "@/lib/auth";
+import { normalizedToEventItem } from "@/lib/events/normalize";
+import { unifiedEventsSharingDate } from "@/lib/events/unified";
 import {
   deleteEvent,
   eventsSharingDate,
@@ -22,6 +24,7 @@ import {
   getEventsForOwner,
   saveEvent,
 } from "@/lib/stores/event-store";
+import { getUnifiedCalendarEnabled } from "@/lib/stores/unified-calendar-store";
 import {
   holdEditProposal,
   holdNewRecord,
@@ -54,7 +57,15 @@ export async function GET(request: NextRequest) {
     if (!DATE_RE.test(onDate)) {
       return NextResponse.json({ error: "onDate must be YYYY-MM-DD" }, { status: 400 });
     }
-    const events = await eventsSharingDate(onDate, params.get("exclude") ?? undefined);
+    const exclude = params.get("exclude") ?? undefined;
+    // Unified flag ON (E12/M-16-05): anchor-date conflict warnings see the
+    // MERGED calendar, so a member picking a date learns about AMS/Tribe
+    // events too. Flag OFF: exactly the pre-E12 in-app-only lookup.
+    if (await getUnifiedCalendarEnabled()) {
+      const merged = await unifiedEventsSharingDate(onDate, exclude);
+      return NextResponse.json({ events: merged.map(normalizedToEventItem) });
+    }
+    const events = await eventsSharingDate(onDate, exclude);
     return NextResponse.json({ events });
   }
 

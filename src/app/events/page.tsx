@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { EventCategory, EventItem } from "@/lib/types";
+import { normalizedToEventItem } from "@/lib/events/normalize";
+import { getUnifiedEvents } from "@/lib/events/unified";
 import { getEvents } from "@/lib/stores/event-store";
+import { getUnifiedCalendarEnabled } from "@/lib/stores/unified-calendar-store";
 import { getCopyOverrides, copyText } from "@/lib/stores/site-store";
 import { assertPageVisible, HiddenPageBanner } from "@/lib/page-visibility";
 import { formatPacificDate, formatPacificTime, todayPacific } from "@/lib/time";
@@ -89,7 +93,7 @@ function DateBlock({ iso }: { iso: string }) {
   );
 }
 
-function EventCard({ event }: { event: EventItem }) {
+function EventCard({ event, external }: { event: EventItem; external?: boolean }) {
   return (
     <Card>
       <div className="flex gap-4">
@@ -103,30 +107,40 @@ function EventCard({ event }: { event: EventItem }) {
           </div>
           <p className="mt-1 text-sm font-medium text-ink">
             {timeLabel(event)}
-            <span className="mx-2 text-ink-soft" aria-hidden>
-              ·
-            </span>
-            <ExternalLink
-              href={mapSearchUrl(event.address ?? `${event.venue}, Kingston, WA`)}
-            >
-              {event.venue}
-            </ExternalLink>
+            {event.venue && (
+              <>
+                <span className="mx-2 text-ink-soft" aria-hidden>
+                  ·
+                </span>
+                <ExternalLink
+                  href={mapSearchUrl(event.address ?? `${event.venue}, Kingston, WA`)}
+                >
+                  {event.venue}
+                </ExternalLink>
+              </>
+            )}
           </p>
           <p className="mt-2 text-sm text-ink-soft">{event.description}</p>
           <p className="mt-2 text-xs text-ink-soft">
-            By {event.organizer}
+            {event.organizer && <>By {event.organizer}</>}
             {event.url && (
               <>
-                <span className="mx-2" aria-hidden>
-                  ·
-                </span>
+                {event.organizer && (
+                  <span className="mx-2" aria-hidden>
+                    ·
+                  </span>
+                )}
                 <ExternalLink href={event.url} className="text-xs">
                   Event page
                 </ExternalLink>
               </>
             )}
           </p>
-          <ReportInaccurate store="events" id={event.id} subject={event.title} />
+          {/* External (ingested) events aren't records in the events store —
+              corrections belong upstream, so no report intake for them. */}
+          {!external && (
+            <ReportInaccurate store="events" id={event.id} subject={event.title} />
+          )}
         </div>
       </div>
     </Card>
@@ -135,7 +149,23 @@ function EventCard({ event }: { event: EventItem }) {
 
 export default async function EventsPage() {
   const hiddenPreview = await assertPageVisible("/events");
-  const [events, copy] = await Promise.all([getEvents(), getCopyOverrides()]);
+  // Ship-dark flag (E12): OFF → exactly the pre-E12 in-app-only page. The
+  // check is session-free on purpose — this page is ISR (shared cache), so
+  // an admin-preview branch here would serve preview data to everyone;
+  // admins preview the merged calendar on /admin/events-sources instead.
+  const unified = await getUnifiedCalendarEnabled();
+  const copy = await getCopyOverrides();
+  let events: EventItem[];
+  const externalIds = new Set<string>();
+  if (unified) {
+    const merged = await getUnifiedEvents();
+    events = merged.map(normalizedToEventItem);
+    for (const n of merged) {
+      if (n.source !== "in-app") externalIds.add(normalizedToEventItem(n).id);
+    }
+  } else {
+    events = await getEvents();
+  }
   const today = todayPacific();
   const upcoming = events
     .filter((event) => dateOf(event.start) >= today)
@@ -187,7 +217,7 @@ export default async function EventsPage() {
         >
           <div className="grid gap-4">
             {thisWeekend.map((event) => (
-              <EventCard key={event.id} event={event} />
+              <EventCard key={event.id} event={event} external={externalIds.has(event.id)} />
             ))}
           </div>
         </Section>
@@ -197,35 +227,57 @@ export default async function EventsPage() {
         <Section key={monthKey} title={monthLabel(monthKey)}>
           <div className="grid gap-4">
             {monthEvents.map((event) => (
-              <EventCard key={event.id} event={event} />
+              <EventCard key={event.id} event={event} external={externalIds.has(event.id)} />
             ))}
           </div>
         </Section>
       ))}
 
       <Section>
-        <Callout title="Have an event?" tone="coral">
-          Submit it through the Kingston Chamber — email{" "}
-          <a
-            className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2 hover:text-sound"
-            href="mailto:info@kingstonchamber.com?subject=Event%20for%20the%20Visit%20Kingston%20calendar"
-          >
-            info@kingstonchamber.com
-          </a>{" "}
-          with the date, time, venue, and a sentence or two about it.
-        </Callout>
-        <p className="mt-4 text-sm text-ink-soft">
-          This calendar is curated by hand by the Kingston Chamber from its{" "}
-          <ExternalLink href="https://business.kingstonchamber.com/events">
-            events calendar
-          </ExternalLink>{" "}
-          and the{" "}
-          <ExternalLink href="https://portofkingston.org/events/list/">
-            Port of Kingston calendar
-          </ExternalLink>
-          . Automatic feed sync is on the roadmap — until then, always confirm
-          details with the organizer before making the trip.
-        </p>
+        {unified ? (
+          <>
+            <Callout title="Have an event?" tone="coral">
+              Suggest it for the Kingston calendar —{" "}
+              <Link
+                className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2 hover:text-sound"
+                href="/events/suggest"
+              >
+                submit it here
+              </Link>{" "}
+              and the Chamber will review it before it goes live.
+            </Callout>
+            <p className="mt-4 text-sm text-ink-soft">
+              This calendar is maintained by the Kingston Chamber and merges
+              community calendars around town automatically. Always confirm
+              details with the organizer before making the trip.
+            </p>
+          </>
+        ) : (
+          <>
+            <Callout title="Have an event?" tone="coral">
+              Submit it through the Kingston Chamber — email{" "}
+              <a
+                className="font-medium text-tide-deep underline decoration-seaglass underline-offset-2 hover:text-sound"
+                href="mailto:info@kingstonchamber.com?subject=Event%20for%20the%20Visit%20Kingston%20calendar"
+              >
+                info@kingstonchamber.com
+              </a>{" "}
+              with the date, time, venue, and a sentence or two about it.
+            </Callout>
+            <p className="mt-4 text-sm text-ink-soft">
+              This calendar is curated by hand by the Kingston Chamber from its{" "}
+              <ExternalLink href="https://business.kingstonchamber.com/events">
+                events calendar
+              </ExternalLink>{" "}
+              and the{" "}
+              <ExternalLink href="https://portofkingston.org/events/list/">
+                Port of Kingston calendar
+              </ExternalLink>
+              . Automatic feed sync is on the roadmap — until then, always confirm
+              details with the organizer before making the trip.
+            </p>
+          </>
+        )}
       </Section>
     </>
   );

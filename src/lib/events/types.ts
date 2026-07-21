@@ -91,6 +91,10 @@ export interface NormalizedEvent {
   /** Identities merged into this survivor (losers' {source, externalId}),
    *  carried so future ingests keep resolving to the same record. */
   aliases?: { source: EventSource; externalId: string }[];
+  /** Portal ownership refs — in-app events only; the feed's ?owner filter
+   *  reads them. External sources never carry ownership. */
+  ownerId?: string;
+  charityId?: string;
 }
 
 /** Per-run adapter report — stored on the calendar-sources record and shown

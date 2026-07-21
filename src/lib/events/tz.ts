@@ -105,3 +105,19 @@ export function toUtcBasic(iso: string): string {
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}Z$/, "Z");
 }
+
+/** ISO instant → the same instant as a Pacific-offset ISO string
+ *  ("2026-07-04T22:15:00-07:00") — the form the in-app store has always used,
+ *  so display code that slices date prefixes keeps working on external
+ *  events. */
+export function toPacificOffsetIso(iso: string): string {
+  const instant = new Date(iso);
+  const w = instantToWallTime(PACIFIC, instant);
+  const offset = zoneOffsetMinutes(PACIFIC, instant);
+  const sign = offset < 0 ? "-" : "+";
+  const abs = Math.abs(offset);
+  const oh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const om = String(abs % 60).padStart(2, "0");
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${w.y}-${p(w.mo)}-${p(w.d)}T${p(w.h)}:${p(w.mi)}:${p(w.s)}${sign}${oh}:${om}`;
+}
