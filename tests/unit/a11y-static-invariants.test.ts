@@ -226,6 +226,33 @@ describe("E14 static a11y invariants", () => {
     }
   });
 
+  it("keeps the SVG trendline chip routed through the AA-safe fill", () => {
+    // Companion to tests/unit/ferry-trendline-contrast.test.ts, which proves the
+    // FILLS clear 4.5:1. This proves the component still USES them: the ratios
+    // are worthless if the chip goes back to `fill={meta.hex}`, and because the
+    // chip renders white text on all five levels, that regression is invisible
+    // to axe (it scans DOM/CSS colors, not SVG presentation attributes) and to
+    // the fern-tint grep above, which only knows about Tailwind classes.
+    //
+    // meta.hex is still CORRECT for the dashed rule and the marker dot — they
+    // carry no text, so no 1.4.3 obligation. Only the <rect> behind the label
+    // is constrained, so the assertion is scoped to <rect> lines specifically.
+    const trendline = readFileSync(path.join(SRC_ROOT, "components", "ferry-trendline.tsx"), "utf8");
+    expect(trendline, "the chip rect must take its fill from chipFillHex()").toContain(
+      "fill={chipFillHex(meta)}",
+    );
+    const rectWithRawHex = trendline
+      .split("\n")
+      .map((line, i) => [line, i + 1] as const)
+      .filter(([line]) => line.includes("<rect") && line.includes("meta.hex"))
+      .map(([line, n]) => `ferry-trendline.tsx:${n}: ${line.trim()}`);
+    expect(
+      rectWithRawHex,
+      `white label text on a raw LEVELS[].hex fill is under AA (busy = 2.27:1). ` +
+        `Use chipFillHex(meta):\n${rectWithRawHex.join("\n")}`,
+    ).toEqual([]);
+  });
+
   it("the simple-mode bootstrap is inline and localStorage-backed", () => {
     const layout = readFileSync(LAYOUT, "utf8");
     expect(layout).toContain("ek-simple");
