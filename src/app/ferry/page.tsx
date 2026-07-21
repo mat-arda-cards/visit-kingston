@@ -21,6 +21,8 @@ import {
 } from "@/lib/wsf";
 import { FAST_FERRY_FACTS, getFastFerrySailings } from "@/lib/kitsap";
 import { getCopyOverrides, copyText } from "@/lib/stores/site-store";
+import { walkOnRoundTripFare } from "@/lib/data/ferry-info";
+import { SAFETY_TOKEN_FALLBACKS } from "@/lib/i18n/safety-content";
 import { getFerryInfo, type FareRow } from "@/lib/stores/ferry-info-store";
 import { getWebcams } from "@/lib/stores/listing-stores";
 import {
@@ -94,6 +96,12 @@ export default async function FerryPage() {
       getEffectiveHiddenPaths(),
     ]);
   const fastFerry = getFastFerrySailings();
+  // The walk-on round trip is quoted mid-sentence further down, not just in the
+  // fare table — same rule as /simple and /es: it comes from the record, and if
+  // the record has no usable figure the sentence names none. The EN wording is
+  // shared with the safety dictionary so all three pages say the same thing.
+  const walkOnRoundTrip =
+    walkOnRoundTripFare(ferryInfo.fares) ?? SAFETY_TOKEN_FALLBACKS.en.walkOnRoundTrip;
   const vessels = await getVesselLocations();
   const initial = { carFerry, fastFerry, terminals: { kingston, edmonds }, alerts };
   const serverNow = new Date().toISOString();
@@ -401,9 +409,9 @@ export default async function FerryPage() {
             </h3>
             <p className="mt-2 text-sm text-ink-soft">
               Sounder trains and Amtrak Cascades stop at Edmonds Station, right beside the ferry
-              dock; Community Transit buses stop nearby too. Walk on for $11.35 — that covers the
-              whole round trip, since boarding in Kingston is free. And it works on Sundays, when
-              the fast ferry doesn&rsquo;t run.
+              dock; Community Transit buses stop nearby too. Walk on for {walkOnRoundTrip} — that
+              covers the whole round trip, since boarding in Kingston is free. And it works on
+              Sundays, when the fast ferry doesn&rsquo;t run.
             </p>
             <p className="mt-3 text-sm">
               <ExternalLink href={transitDirectionsUrl("Edmonds Ferry Terminal, Edmonds, WA")}>

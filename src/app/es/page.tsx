@@ -4,9 +4,11 @@ import Link from "next/link";
 import { DocumentLang } from "@/components/document-lang";
 import { SafetyEssentials } from "@/components/safety-essentials";
 import { PageHeader, Section } from "@/components/ui";
+import { walkOnRoundTripFare } from "@/lib/data/ferry-info";
 import { getFerryStatusSnapshot } from "@/lib/ferry-status";
-import { SAFETY_CONTENT } from "@/lib/i18n/safety-content";
+import { SAFETY_CONTENT, safetyValues } from "@/lib/i18n/safety-content";
 import { assertPageVisible, HiddenPageBanner } from "@/lib/page-visibility";
+import { getFerryInfo } from "@/lib/stores/ferry-info-store";
 import { copyText, getCopyOverrides } from "@/lib/stores/site-store";
 import { formatPacificTime } from "@/lib/time";
 import type { Sailing } from "@/lib/types";
@@ -81,7 +83,11 @@ function BoatColumn({
 
 export default async function SpanishPage() {
   const hiddenPreview = await assertPageVisible("/es");
-  const [ferry, copy] = await Promise.all([getFerryStatusSnapshot(), getCopyOverrides()]);
+  const [ferry, ferryInfo, copy] = await Promise.all([
+    getFerryStatusSnapshot(),
+    getFerryInfo(),
+    getCopyOverrides(),
+  ]);
 
   const phone = copyText(copy, "contact.phone.number");
   const noBoats = copyText(copy, "es.boats.none");
@@ -143,7 +149,17 @@ export default async function SpanishPage() {
           )}
         </Section>
 
-        <SafetyEssentials strings={SAFETY_CONTENT.es} values={{ phone }} />
+        {/* Same dictionary and the same live values /simple fills, resolved
+            against the Spanish half — so the fare a Spanish-speaking visitor
+            reads is the one the Chamber last saved, and the wording around it
+            is still a translator's, not a substituted English phrase. */}
+        <SafetyEssentials
+          strings={SAFETY_CONTENT.es}
+          values={safetyValues("es", {
+            phone,
+            walkOnRoundTrip: walkOnRoundTripFare(ferryInfo.fares),
+          })}
+        />
 
         <Section title="Hablar con una persona">
           <div className="rounded-2xl border border-sand bg-white p-5">

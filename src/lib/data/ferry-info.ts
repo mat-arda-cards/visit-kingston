@@ -44,9 +44,60 @@ export interface BoardingPass {
  *  a number so the Chamber can write "Free" or "$27.00 + $11.35/passenger"
  *  without the display having to guess a currency format. */
 export interface FareRow {
+  /**
+   * Stable identity for the few rows another page quotes INSIDE A SENTENCE
+   * rather than rendering as a table line. Not shown to a visitor and not
+   * editable at /admin/ferry-info — `label` is what the Chamber owns, and a
+   * label is exactly the thing an operator is entitled to reword.
+   *
+   * Only rows in FARE_ROW_KEYS carry one; everything else is an ordinary,
+   * anonymous row. The API drops any other value, so the overlay can never
+   * accumulate keys nothing looks for.
+   */
+  key?: FareRowKey;
   label: string;
   amount: string;
   note?: string;
+}
+
+/**
+ * The walk-on round-trip fare is quoted in prose on /ferry and, in both
+ * languages, in the E14 safety dictionary that feeds /simple and /es. Those
+ * sentences need to find this row after an operator has renamed it ("Round
+ * trip on foot" → "Walking on, both ways") or dragged it down the list — a
+ * label match or an index would silently start quoting the wrong fare, and
+ * the readers of /simple and /es are the least likely to catch it.
+ */
+export const WALK_ON_ROUND_TRIP_KEY = "walk-on-round-trip";
+
+/** Every stable row key. The admin API accepts these and nothing else. */
+export const FARE_ROW_KEYS = [WALK_ON_ROUND_TRIP_KEY] as const;
+export type FareRowKey = (typeof FARE_ROW_KEYS)[number];
+
+/**
+ * A single money figure and nothing else — "$11.35", "$27", "$1,240.00".
+ *
+ * Deliberately strict. `amount` is free text, so a legitimate Chamber edit can
+ * be "Free", "$27.00 + $11.35/passenger", or "see the WSF page" — all fine in
+ * the /ferry fare TABLE, all nonsense dropped into "a round trip on foot costs
+ * ___, and you pay it once." Anything that is not one plain figure falls back
+ * to wording that names no number instead.
+ */
+const SINGLE_MONEY_FIGURE = /^\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?$/;
+
+/**
+ * The walk-on round-trip figure, if the record still holds one that can be
+ * dropped into a sentence — otherwise null, and the caller says something true
+ * without a number.
+ *
+ * Never falls back to the seed below: the whole point of E27 making fares
+ * editable is that a figure the Chamber has not confirmed must not be
+ * published, and quietly reverting to a compiled-in number is precisely the
+ * stale-fare bug this replaced.
+ */
+export function walkOnRoundTripFare(fares: FerryFares): string | null {
+  const amount = fares.walkOn.find((r) => r.key === WALK_ON_ROUND_TRIP_KEY)?.amount.trim();
+  return amount && SINGLE_MONEY_FIGURE.test(amount) ? amount : null;
 }
 
 /**
@@ -138,6 +189,9 @@ export const BOARDING_PASS = {
 export const FERRY_FARES = {
   walkOn: [
     {
+      // The one figure /ferry, /simple and /es quote in a sentence — see
+      // WALK_ON_ROUND_TRIP_KEY. Rename the label freely; keep the key.
+      key: WALK_ON_ROUND_TRIP_KEY,
       label: "Round trip on foot",
       amount: "$11.35",
       note: "Boarding in Kingston is always free — Washington State Ferries collects passenger fares only on the Edmonds side, whichever direction you start.",
