@@ -76,11 +76,20 @@ export function SiteFooter({
         </div>
       </div>
       <div className="border-t border-white/10">
-        <p className="mx-auto max-w-5xl px-4 py-4 text-xs text-seaglass/80">
-          <RichText
-            text={copyText(copy, "footer.credit")}
-          />
-        </p>
+        <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-4 text-xs text-seaglass/80 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            <RichText text={copyText(copy, "footer.credit")} />
+          </p>
+          {/* Conspicuous on every page (MHMDA: notice linked from the home surface). */}
+          <nav aria-label="Legal" className="flex gap-4">
+            <Link href="/privacy" className="hover:underline">
+              Privacy
+            </Link>
+            <Link href="/accessibility" className="hover:underline">
+              Accessibility
+            </Link>
+          </nav>
+        </div>
       </div>
     </footer>
   );
