@@ -31,7 +31,7 @@ Phase-2 Vercel path, DNS, pre-launch checklist),
    parking overlay are all reproducible from git + `npm install`. Back up
    **both** Neon (PITR/branching) and `DATA_DIR`.
 2. **`DATABASE_URL` is required on every deploy** — `/api/health` reports
-   `dbOk:false` and 503s without it. That gate is real, but it does NOT hold
+   `db:false` and 503s without it. That gate is real, but it does NOT hold
    back a bad release: both Render services mount a persistent disk, so the old
    instance must stop before the new one starts. A release without a working
    `DATABASE_URL` takes the service DOWN (verified on staging 2026-07-19).
@@ -303,7 +303,7 @@ picture.
 | Blueprint | `render.yaml` — a Docker web service (`runtime: docker`, `dockerfilePath: ./Dockerfile`), region `oregon`, plan **starter** (persistent disks require a paid plan) |
 | Image | Multi-stage `Dockerfile`: `node:22-alpine`, `npm ci`, `npm run build`, ships only the standalone runner (`.next/standalone` + copied `.next/static` + `public/`), runs as non-root `nextjs`, `CMD ["node","server.js"]` on port 3000 |
 | Persistence | **Neon Postgres** for all structured data (E05 — `DATABASE_URL` is `sync: false` in `render.yaml`, set in the dashboard) + a 1 GB disk named `data` mounted at **`/data`** (`DATA_DIR=/data`) for hunt photos / map images. The disk survives deploys and restarts |
-| Health gate | `healthCheckPath: /api/health` — Render routes traffic only after 200. `/api/health` returns `{ ok, dataDir, dataWritable, dbOk, time }`, **200 only when `/data` is writable AND Postgres answers, 503 otherwise** (write-probes `/data/.health-probe`, pings the DB). This catches an unmounted/read-only volume — or a release booted without `DATABASE_URL` — before users do |
+| Health gate | `healthCheckPath: /api/health` — Render routes traffic only after 200. `/api/health` returns `{ ok, db, storage, time }`, **200 only when Postgres answers, 503 otherwise** (E15: gates on the DB alone). It does NOT touch the filesystem — the earlier `/data` write-probe was removed so the disk can be dropped without bricking the health check. `storage` (`"r2"` \| `"fs"` \| `"unconfigured"`) reports where images are configured to live but **never gates** — an R2 outage must 404 an image, not 503 the site. This catches a release booted without a reachable `DATABASE_URL` before users do |
 | Secrets | `AUTH_SECRET` and `SETUP_TOKEN` = `generateValue: true` (Render mints them once; **do not rotate `AUTH_SECRET` casually**); `WSDOT_API_KEY` and `NEXT_PUBLIC_SITE_URL` are `sync: false`, entered in the dashboard. `NEXT_PUBLIC_*` is inlined at **build** time — Render bakes it during the Docker build |
 | Deploys | **Auto-deploy on push** to the tracked branch. The repo was made **public** to bypass a Render↔GitHub sync issue (no secrets live in git — `.env*`, `.data/` are gitignored; `.env.production.example` is documentation only) |
 | Cost | **≈ $7.25 / mo** (Starter web instance + 1 GB disk) |
@@ -1064,22 +1064,30 @@ so don't rotate it casually. Users clear the cookie and sign in again. (This is
 also the intentional global "log everyone out" lever — there's no per-session
 revocation.)
 
-### `/api/health` returns 503
+### `/api/health` returns 503 (or 500)
 
-Two probes can fail (the body says which): `dataWritable:false` means the
-probe couldn't write to `DATA_DIR` — on Render the `/data` disk is unmounted
-or read-only; check the disk is attached and `DATA_DIR=/data` (locally, that
-`.data` is writable). `dbOk:false` (E05) means Postgres didn't answer —
-`DATABASE_URL` missing/wrong or Neon unreachable. Either way Render withholds
-traffic from the unhealthy release — but **that does not keep the previous
-release serving**. Both services mount a persistent disk only one instance can
-hold, so the old container was already stopped before this one started: a
-release that never goes green means the site is **DOWN (502)**, not held back
+Since E15 the only thing that can make health unhealthy is Postgres. **The
+status code tells you which kind of database failure it is** — a genuinely
+useful first triage step:
+
+| Code | Body | Meaning | Fix |
+|---|---|---|---|
+| **503** | `{"ok":false,"db":false,…}` | The app is running but has **no database configured** — `DATABASE_URL` unset. The route ran and reported honestly. | Set `DATABASE_URL` on the service and redeploy |
+| **500** | `Internal Server Error` (no JSON) | `DATABASE_URL` **is** set but the host is **unreachable** (wrong host/port/credentials, or Neon down). The boot migrator in `src/instrumentation.ts` fails on `CREATE SCHEMA IF NOT EXISTS "drizzle"`, the instrumentation hook fails to load, and Next 500s **every** route — health never even runs. Check the service logs for `ECONNREFUSED` / `An error occurred while loading instrumentation hook`. | Correct `DATABASE_URL` or wait for Neon; redeploy |
+
+Both are fail-closed — Render withholds traffic from any non-200 release — so
+the safety posture is the same; only the diagnosis differs. (Health no longer
+probes the disk; a storage problem is reported in `storage` but never 503s.)
+Render
+withholds traffic from the unhealthy release — but while a persistent disk is
+still attached **that does not keep the previous release serving**: the disk
+only one instance can hold means the old container was already stopped, so a
+release that never goes green is the site **DOWN (502)**, not held back
 (verified on staging 2026-07-19). Fix the env var / database and redeploy, or
 roll back to a known-good commit immediately — see
 [RUNBOOK-CUTOVER.md](RUNBOOK-CUTOVER.md) "Every deploy is a brief outage".
-The 503 body still reports the resolved `dataDir`, which is the first thing to
-confirm.
+(Once the disk is removed — E15 slice 3 — deploys overlap and a failed release
+is held back instead of taking the site down; this paragraph updates then.)
 
 ### Abuse response: anonymous-write flood / disk full
 
