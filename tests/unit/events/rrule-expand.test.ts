@@ -110,6 +110,65 @@ describe("expandEvents — EXDATE and bounds", () => {
   });
 });
 
+describe("expandEvents — sub-daily frequency guard", () => {
+  // Regression: `between()` builds the whole window BEFORE the per-series cap
+  // slices it, so cost scales with FREQ rather than with the cap. Over the real
+  // 181-day window MINUTELY built 260,641 dates (+87 MB) and SECONDLY
+  // 15,638,400 — enough to OOM a 512 MB container (production, 2026-07-22).
+  const series = (freq: string): NormalizedEvent => ({
+    title: `Runaway ${freq}`,
+    startIso: "2026-07-02T17:00:00.000Z",
+    allDay: false,
+    venue: "",
+    description: "",
+    source: "ams-ical",
+    externalId: `e.9999.${freq.toLowerCase()}`,
+    rrule: `FREQ=${freq}`,
+    occurrenceKey: `ams-ical:e.9999.${freq.toLowerCase()}:20260702T170000Z`,
+  });
+
+  it.each(["MINUTELY", "SECONDLY"])(
+    "refuses FREQ=%s, keeping it as ONE event rather than expanding it",
+    (freq) => {
+      const { events, warnings } = expandEvents([series(freq)], WINDOW_2026H2);
+      expect(events).toHaveLength(1);
+      // Degraded, never dropped: the event still shows, with its stable key.
+      expect(events[0].occurrenceKey).toBe(series(freq).occurrenceKey);
+      expect(events[0].rrule).toBeUndefined();
+      // And the reason reaches the source's run report, not just a log line.
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(`FREQ=${freq}`);
+      expect(warnings[0]).toContain("kept as a single event");
+    },
+  );
+
+  it("still expands FREQ=HOURLY — hourly is the finest SUPPORTED frequency", () => {
+    const { events, warnings } = expandEvents([series("HOURLY")], WINDOW_2026H2);
+    // Hourly is plausible for a community calendar (an on-the-hour tour) and
+    // cheap to build (4,345 dates over 181 days), so it expands and hits the
+    // ordinary per-series cap. This is the boundary the guard is drawn at.
+    expect(events).toHaveLength(MAX_OCCURRENCES_PER_SERIES);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("refuses a sub-daily series WITHOUT building it (the actual OOM regression)", () => {
+    // The point of the guard is that the refusal is cheap. Before the fix this
+    // line allocated ~5 GB of Date objects and killed the process outright, so
+    // "returns promptly" IS the assertion — a revert cannot pass this.
+    const started = Date.now();
+    const { events } = expandEvents([series("SECONDLY")], WINDOW_2026H2);
+    expect(events).toHaveLength(1);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it("leaves coarse frequencies alone (guard is not over-broad)", () => {
+    for (const freq of ["YEARLY", "MONTHLY", "WEEKLY", "DAILY"]) {
+      const { warnings } = expandEvents([series(freq)], WINDOW_2026H2);
+      expect(warnings, `${freq} must not be refused`).toHaveLength(0);
+    }
+  });
+});
+
 describe("expandEvents — RECURRENCE-ID overrides", () => {
   it("replaces the occurrence whose ORIGINAL start matches, keeping its stable key", () => {
     const { events } = expandEvents(
