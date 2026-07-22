@@ -3,7 +3,7 @@
 **Date:** 2026-07-22 · **Revision:** 5
 **Status: ✅ APPLIED** on branch `copy/evergreen-audit`, rebased onto current `main`. Verified against a clean-`main` baseline: identical results (1,211 passing / 4 pre-existing `sitemap.xml` failures, unrelated to copy), zero new lint errors. The document is retained as the rationale record and as the **style guide for new copy** — §2 (the evergreen rules) and §3 (the standing decisions) are the parts that stay live.
 
-> **Revision 5** closes the §10 follow-up: `/simple`, `/es`, `/accessibility`, `/privacy`, `/print`, and `/offline` were audited. **Result: clean — no copy edits warranted** (see §10 for why, and three flags left for the Chamber/team). One comment-only cleanup shipped (`ferry-info.ts` header, stale after PR #90).
+> **Revision 5** closes the §10 follow-up: `/simple`, `/es`, `/accessibility`, `/privacy`, `/print`, and `/offline` were audited. **Result: clean — no visitor copy edits warranted** (see §10 for why). Comment-only cleanups shipped: the stale `ferry-info.ts` header (after PR #90) and two ADA-date comments. Two legal-copy items on `/privacy` are flagged for the Chamber.
 
 > ⚠️ **Two carve-outs, deliberate.** Main shipped an **E14 plain-language pass (NFR-04)** that rewrote 11 registry blocks to be *longer and simpler* for accessibility — the opposite direction from this audit's brevity goal. Where the two conflict, **E14 wins**. The following are therefore left untouched, and future copy passes must respect the `// E14 plain-language pass` marker as a do-not-shorten flag:
 > `ferry.header.intro` · `parking.header.intro` · `parking.map.subtitle` · `webcams.header.intro` · `ferryLine.body1` · `ferryLine.body2` · `ferry.header.edmonds.intro` · `ferryLine.edmonds.body2` · `nearme.consent.body` · `hunt.disclosure` · `footer.credit`, plus the E14-marked parking callout on `/parking`.
@@ -333,13 +333,14 @@ Why each is already right — and must stay that way:
 - **`/privacy`** — a legal page, code-owned, with retention windows / version / changelog driven by the policy manifest (`src/lib/privacy/policy.ts`) that the purge job enforces. Its date-like content is legal commitment, not stale prose.
 - **`/accessibility`** — a public conformance commitment. Its "actively improving / coming next" language and its dates (`accessibility.ada.deadline`, `accessibility.lastReviewed`) are **mandatory honesty for the genre**, not neglect-signal build-state. An accessibility statement that hides what it doesn't do yet is *worse*, and a "last reviewed" date is required. Do not cut.
 
-### The one change that shipped
-- `src/lib/data/ferry-info.ts` header comment — trimmed a stale "As of July 1–2, 2026 the dispenser was down" line left over after PR #90 emptied `currentNote`. Comment-only; the evergreen boarding-pass fact stays.
+### Comment-only changes that shipped (no visitor-facing text touched)
+- `src/lib/data/ferry-info.ts` header — trimmed a stale "As of July 1–2, 2026 the dispenser was down" line left over after PR #90 emptied `currentNote`; now documents why the field ships empty.
+- `accessibility/statement.tsx` + `accessibility/page.tsx` — the two comments (flag #3 below) claimed the ADA date is "deliberately absent"; the statement now renders it, so the comments were corrected to describe how the date is sourced (a registry block) and kept current. The `docs/OPERATIONS.md` §9 item-15 verification gate is treated as closed, consistent with what the code already renders.
 
-### Flagged for the Chamber / team (deliberately NOT changed — legal / review-gated territory)
+### Flagged for the Chamber / team (deliberately NOT changed — legal territory)
 1. **`/privacy:146` — "The app _is becoming_ the … membership records system."** Transitional/build-state phrasing inside a legal data-handling claim. If it *is* now the system of record, "is" is both tighter and more accurate — but that's a legal-accuracy call for the Chamber, not a unilateral copy edit.
 2. **`/privacy:146` — "Greater Kingston _Community_ Chamber of Commerce."** This is the **only** occurrence of "Community" in the name; the brand appears as "Greater Kingston Chamber of Commerce" 11× elsewhere. Either this legal page uses the correct full registered name (and the others are informal) or it's a typo. The Chamber should confirm which is the legal entity name and align the rest.
-3. **Stale code comments on the ADA date** (`accessibility/statement.tsx:43-50` and `accessibility/page.tsx:16-17`) — both say the ADA compliance date is "deliberately absent," but the statement now renders it ("April 26, 2028", via `accessibility.ada.deadline`). Maintainer-facing doc drift, not visitor copy. Left for the team because this file is explicitly code-owned and its ADA date has a documented verification gate (`docs/OPERATIONS.md` §9 item 15) — the comment update should ride with whoever closes that gate.
+3. **Stale ADA-date comments — ✅ fixed in this pass.** `accessibility/statement.tsx` and `accessibility/page.tsx` said the ADA compliance date was "deliberately absent," but the statement renders it ("April 26, 2028", via `accessibility.ada.deadline`). Comments corrected to match; no visitor copy changed.
 
 ---
 
