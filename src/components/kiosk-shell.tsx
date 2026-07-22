@@ -27,13 +27,58 @@ import {
   NUDGE_INTERVAL_MS,
 } from "@/lib/kiosk/policy";
 
-/** Attract-loop photography. Local files only — a kiosk fetches nothing offsite. */
+/**
+ * Attract-loop photography. Local files only — a kiosk fetches nothing offsite.
+ *
+ * SWAPPING THESE FOR PROPER AERIALS is a one-line-per-photo change: drop files
+ * into public/brand/ and edit this list. What to shoot for, because a kiosk is
+ * not a web page:
+ *
+ *   - WIDE AND HIGH. The panel is portrait 1080x1920 and read from several feet
+ *     away by someone walking past. Zoomed-out water-and-treeline frames read at
+ *     that distance; a close-up of a storefront does not.
+ *   - PORTRAIT-TOLERANT. object-cover crops a landscape frame hard to fill a
+ *     9:16 stage. A subject sitting dead-centre survives that; one along the
+ *     left edge gets cut off.
+ *   - DARK OR CALM ALONG THE BOTTOM THIRD. The headline and prompt sit there
+ *     over a navy scrim, and a bright, busy lower third fights them.
+ *   - SIZED FOR A MINI PC. Convert to WebP at roughly 1080x1920 and keep each
+ *     file under ~300KB. photo-heritage-park.webp is 1.2MB, which is five times
+ *     what it needs to be — E15 already learned this lesson on the home hero,
+ *     where a 445KB JPEG was the whole LCP problem.
+ *   - REAL ALT TEXT. It is not decorative here: the attract overlay is the
+ *     kiosk's landmark, and the a11y gate scans this screen.
+ *
+ * The list is deliberately ordered — the first one is `priority` and is what a
+ * visitor sees on a cold boot, so it should be the best frame.
+ */
+// From the Chamber's own marketing library, cropped to the 9:16 stage and
+// converted to WebP (each under 300KB, down from 5-13MB originals).
+//
+// ORDER IS DELIBERATE. The first frame is `priority` and is what a cold boot
+// puts on the glass, so it is the calmest and widest of the set — and its dark
+// water fills the bottom third, which is where the headline sits.
 const ATTRACT_PHOTOS = [
-  { src: "/brand/photo-kingston-harbor-35.jpg", alt: "Kingston harbour at dusk" },
-  { src: "/brand/photo-hansville-hero.jpg", alt: "Point No Point across Puget Sound" },
-  { src: "/brand/photo-kingston-59.jpg", alt: "Downtown Kingston waterfront" },
-  { src: "/brand/photo-heritage-park.webp", alt: "Trails through Heritage Park" },
-  { src: "/brand/photo-kingston-37.jpg", alt: "The Kingston shoreline" },
+  {
+    src: "/brand/kiosk-pier.webp",
+    alt: "The sun setting over Puget Sound beyond the Kingston pier",
+  },
+  {
+    src: "/brand/kiosk-canoe.webp",
+    alt: "The bow of a canoe on calm water, looking toward a wooded shoreline",
+  },
+  {
+    src: "/brand/kiosk-ferry.webp",
+    alt: "A Washington State ferry crossing the sound, seen through trees above the terminal",
+  },
+  {
+    src: "/brand/kiosk-lighthouse.webp",
+    alt: "Point No Point lighthouse above the driftwood and rocks of the beach",
+  },
+  {
+    src: "/brand/kiosk-green.webp",
+    alt: "Families on the lawn at the Village Green under a big summer sky",
+  },
 ];
 /** Seconds each attract photo holds before cross-fading to the next. */
 const ATTRACT_PHOTO_MS = 8_000;
