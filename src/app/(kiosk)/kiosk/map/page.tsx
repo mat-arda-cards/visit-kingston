@@ -1,8 +1,15 @@
-import { KioskMap, FERRY_DOCK, type KioskMapPoint } from "@/components/kiosk-map";
+import {
+  KioskMap,
+  KioskMapLegend,
+  numberPoints,
+  FERRY_DOCK,
+  type KioskMapPoint,
+} from "@/components/kiosk-map";
 import { KioskQr } from "@/components/kiosk-qr";
 import { KioskCard, KioskEmpty, KioskScreen } from "@/components/kiosk-ui";
 import { resolveMapView } from "@/lib/map/resolve";
 import { kioskHandoffUrl } from "@/lib/qr";
+import { walkMinutesFromDock } from "@/lib/geo";
 import { getRestaurants } from "@/lib/stores/business-store";
 import { getParkingZones } from "@/lib/stores/parking-store";
 import { copyText, getCopyOverrides } from "@/lib/stores/site-store";
@@ -32,12 +39,15 @@ const EXPLORE_VIEW = "explore";
 /**
  * Everything worth drawing, as map points.
  *
- * Kept to a walkable radius on purpose: the George's Corner park-and-ride is
- * two and a half miles out, and including it would shrink the whole downtown —
- * where every walk-up visitor actually is — into a corner of the frame. A map
- * that fits everything in is not the same as a map that answers anything.
+ * Kept to a TIGHT walkable radius on purpose, and the number came from looking
+ * at a render rather than from taste. At 1.2km the Village Green sits far
+ * enough north that the whole downtown — where every walk-up visitor actually
+ * is — collapsed into a huddle at the bottom of a mostly empty frame. Half a
+ * kilometre is about a six-minute walk and fills the map with the places
+ * somebody stepping off the boat can actually reach. Anything beyond it is
+ * still listed under "Worth finding" below; it just does not distort the map.
  */
-const WALKABLE_KM = 1.6;
+const WALKABLE_KM = 0.55;
 
 function kmFromDock([lat, lng]: [number, number]): number {
   const dLat = (lat - FERRY_DOCK[0]) * 111;
@@ -57,49 +67,61 @@ export default async function KioskMapPage() {
   // to this" answer, and this screen is a list of destinations.
   const landmarks = (explore?.features ?? []).filter((f) => f.kind === "marker").slice(0, 10);
 
-  // Closest few places to eat, as a walking-distance yardstick — the numbers are
-  // computed from verified coordinates, so they cannot contradict /eat.
   const nearest = restaurants
     .filter((r) => !r.hidden)
     .sort((a, b) => a.walkMinutesFromFerry - b.walkMinutesFromFerry)
     .slice(0, 4);
 
+  // ONE walk-time method across this whole screen, deliberately. src/lib/geo.ts
+  // warns not to mix its straight-line estimate with the hand-calibrated
+  // street-distance walkMinutesFromFerry figures in restaurants.ts — two
+  // numbers for the same walk, disagreeing, on one panel. The legend covers
+  // restaurants AND parking AND landmarks, and only geo.ts can answer for all
+  // three, so it wins and every figure is rendered with a "~".
+  const withWalk = (at: [number, number]) => walkMinutesFromDock(at[0], at[1]);
+
   const points: KioskMapPoint[] = [
-    { id: "dock", label: "You are here", at: FERRY_DOCK, kind: "you-are-here" },
+    { id: "dock", label: "You are here", at: FERRY_DOCK as [number, number], kind: "you-are-here" },
     ...nearest.map((r) => ({
       id: `eat-${r.id}`,
       label: r.name,
       at: [r.lat, r.lng] as [number, number],
       kind: "food" as const,
+      walkMinutes: withWalk([r.lat, r.lng]),
     })),
     ...zones
       .filter((z) => Array.isArray(z.center) && kmFromDock(z.center) <= WALKABLE_KM)
-      .slice(0, 4)
+      .slice(0, 3)
       .map((z) => ({
         id: `park-${z.id}`,
         label: z.name,
         at: z.center,
         kind: "parking" as const,
+        walkMinutes: withWalk(z.center),
       })),
     ...landmarks
       .filter((f) => Array.isArray(f.point) && kmFromDock(f.point as [number, number]) <= WALKABLE_KM)
-      .slice(0, 5)
+      .slice(0, 3)
       .map((f) => ({
         id: `place-${f.id}`,
         label: f.title,
         at: f.point as [number, number],
         kind: "place" as const,
+        walkMinutes: withWalk(f.point as [number, number]),
       })),
   ];
+  const numbered = numberPoints(points);
 
   return (
     <KioskScreen title="Getting around" subtitle="You are at the Kingston ferry terminal">
       {/* The map itself, first — it is what the screen is for. */}
       <div className="mb-10">
-        <KioskMap points={points} />
-        <p className="mt-4 text-2xl text-white/60">
-          A sketch of what is near the dock, drawn to scale. It has no streets — scan below for the
-          full map with directions.
+        <KioskMap points={numbered} />
+        <KioskMapLegend points={numbered} />
+        <p className="mt-6 text-2xl text-white/60">
+          Roughly to scale — pins that sit almost on top of each other are nudged apart so the
+          numbers stay readable. No streets, and walk times are straight-line. Scan below for the
+          real map with directions.
         </p>
       </div>
 
@@ -114,21 +136,13 @@ export default async function KioskMapPage() {
         </p>
       </div>
 
-      {nearest.length > 0 && (
-        <section className="mb-10">
-          <h2 className="mb-6 text-4xl font-semibold text-white/80">How far is a walk here?</h2>
-          <ul className="grid grid-cols-2 gap-6">
-            {nearest.map((r) => (
-              <li key={r.id} className="rounded-3xl bg-white/10 px-8 py-6">
-                <p className="text-3xl font-semibold text-white">{r.name}</p>
-                <p className="mt-2 text-3xl text-white/70 tabular-nums">
-                  {r.walkMinutesFromFerry} min walk
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {/* NO second walk-time list here. There was one, reading
+          restaurant.walkMinutesFromFerry, and it had to go: the legend above
+          already answers "how far", and those two figures come from different
+          methods — hand-calibrated street distance versus geo.ts's
+          straight-line estimate. Two numbers for the same walk, disagreeing,
+          twenty pixels apart on a public panel. src/lib/geo.ts says plainly not
+          to mix them on one screen, and it is right. */}
 
       <h2 className="mb-6 text-4xl font-semibold text-white/80">Worth finding</h2>
       {landmarks.length === 0 ? (

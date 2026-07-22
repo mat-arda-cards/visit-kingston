@@ -52,12 +52,33 @@ import {
  * The list is deliberately ordered — the first one is `priority` and is what a
  * visitor sees on a cold boot, so it should be the best frame.
  */
+// From the Chamber's own marketing library, cropped to the 9:16 stage and
+// converted to WebP (each under 300KB, down from 5-13MB originals).
+//
+// ORDER IS DELIBERATE. The first frame is `priority` and is what a cold boot
+// puts on the glass, so it is the calmest and widest of the set — and its dark
+// water fills the bottom third, which is where the headline sits.
 const ATTRACT_PHOTOS = [
-  { src: "/brand/photo-kingston-harbor-35.jpg", alt: "Kingston harbour at dusk" },
-  { src: "/brand/photo-hansville-hero.jpg", alt: "Point No Point across Puget Sound" },
-  { src: "/brand/photo-kingston-59.jpg", alt: "Downtown Kingston waterfront" },
-  { src: "/brand/photo-heritage-park.webp", alt: "Trails through Heritage Park" },
-  { src: "/brand/photo-kingston-37.jpg", alt: "The Kingston shoreline" },
+  {
+    src: "/brand/kiosk-pier.webp",
+    alt: "The sun setting over Puget Sound beyond the Kingston pier",
+  },
+  {
+    src: "/brand/kiosk-canoe.webp",
+    alt: "The bow of a canoe on calm water, looking toward a wooded shoreline",
+  },
+  {
+    src: "/brand/kiosk-ferry.webp",
+    alt: "A Washington State ferry crossing the sound, seen through trees above the terminal",
+  },
+  {
+    src: "/brand/kiosk-lighthouse.webp",
+    alt: "Point No Point lighthouse above the driftwood and rocks of the beach",
+  },
+  {
+    src: "/brand/kiosk-green.webp",
+    alt: "Families on the lawn at the Village Green under a big summer sky",
+  },
 ];
 /** Seconds each attract photo holds before cross-fading to the next. */
 const ATTRACT_PHOTO_MS = 8_000;
