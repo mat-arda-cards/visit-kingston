@@ -18,8 +18,31 @@ import type { NormalizedEvent } from "./types";
 const ZONE = "America/Los_Angeles";
 
 /** Hard cap per series (epic constraint): a runaway RRULE (missing UNTIL or
- *  COUNT on a daily rule) may not flood the calendar. */
+ *  COUNT on a daily rule) may not flood the calendar.
+ *
+ *  NOTE this caps what we KEEP, not what we BUILD — `between()` materialises
+ *  the whole window first and only then is this slice applied. That is why the
+ *  frequency guard below exists: past a certain FREQ the cost is set by the
+ *  rule, not by this number. */
 export const MAX_OCCURRENCES_PER_SERIES = 62;
+
+/** Finest recurrence this calendar will expand; anything faster is refused.
+ *
+ *  rrule orders its Frequency enum coarse->fine (YEARLY=0 ... SECONDLY=6), so
+ *  "faster than hourly" is `freq > FINEST_SUPPORTED_FREQ`. Hourly is the last
+ *  frequency that is both plausible for a community calendar (an on-the-hour
+ *  tour or shuttle loop) and cheap to expand — see the guard for the numbers. */
+export const FINEST_SUPPORTED_FREQ = RRule.HOURLY;
+
+const FREQ_NAME: Record<number, string> = {
+  [RRule.YEARLY]: "YEARLY",
+  [RRule.MONTHLY]: "MONTHLY",
+  [RRule.WEEKLY]: "WEEKLY",
+  [RRule.DAILY]: "DAILY",
+  [RRule.HOURLY]: "HOURLY",
+  [RRule.MINUTELY]: "MINUTELY",
+  [RRule.SECONDLY]: "SECONDLY",
+};
 
 export interface ExpandOptions {
   /** Window start/end as real instants; the epic's read path passes
@@ -92,21 +115,53 @@ export function expandEvents(
     }
 
     // ---- recurring series ----
+    // Emit the series as a standalone event and say why. Shared by BOTH
+    // refusal paths below, so a series we decline to expand degrades exactly
+    // like an unparseable one — it never silently vanishes, and the reason
+    // lands in the source's run report where an admin will see it.
+    const keepAsSingle = (why: string): void => {
+      warnings.push(`${e.source}:${e.externalId}: ${why} — kept as a single event`);
+      const { rrule: _rrule, exdates: _exdates, ...single } = e;
+      out.push({ ...single, occurrenceKey: e.occurrenceKey || occurrenceKeyFor(e, e.startIso) });
+    };
+
     let rule: RRule;
     try {
       const parsed = RRule.parseString(e.rrule);
+
+      // REFUSE anything faster than hourly, before an RRule is ever built.
+      //
+      // `between()` below materialises EVERY occurrence in the window and only
+      // then applies the MAX_OCCURRENCES_PER_SERIES slice, so the cost is set
+      // by the RULE, not by the cap. Measured over the real 181-day window
+      // (2026-07-22): DAILY builds 182 dates (+3 MB) and HOURLY 4,345 (+7 MB),
+      // but MINUTELY builds 260,641 (+87 MB) and SECONDLY 15,638,400 — the
+      // last of which exhausts the container's heap before one event reaches
+      // the calendar. The cap cannot help: it runs after the allocation.
+      //
+      // Refusing beats bounding the generation. A lazy iterator would fix the
+      // MEMORY, but a SECONDLY series whose DTSTART is years back still has to
+      // step through millions of occurrences just to reach windowStart — that
+      // trades a memory bomb for a CPU one. Nothing on a community events
+      // calendar recurs every minute, so a sub-daily rule is malformed input
+      // rather than a shape we are choosing not to support, and .ics feeds are
+      // third-party input we do not control.
+      if (parsed.freq !== undefined && parsed.freq > FINEST_SUPPORTED_FREQ) {
+        keepAsSingle(
+          `FREQ=${FREQ_NAME[parsed.freq] ?? parsed.freq} recurs faster than ` +
+            `${FREQ_NAME[FINEST_SUPPORTED_FREQ]} and is not expanded`,
+        );
+        continue;
+      }
+
       // UNTIL arrives as a real instant; re-anchor it into floating time so
       // every comparison inside rrule happens in one (wall-clock) frame.
       if (parsed.until) parsed.until = toFloating(parsed.until.toISOString());
       rule = new RRule({ ...parsed, dtstart: toFloating(e.startIso) });
     } catch (err) {
-      warnings.push(
-        `${e.source}:${e.externalId}: unparseable RRULE "${e.rrule}" (${String(
-          (err as Error)?.message ?? err,
-        )}) — kept as a single event`,
+      keepAsSingle(
+        `unparseable RRULE "${e.rrule}" (${String((err as Error)?.message ?? err)})`,
       );
-      const { rrule: _rrule, exdates: _exdates, ...single } = e;
-      out.push({ ...single, occurrenceKey: e.occurrenceKey || occurrenceKeyFor(e, e.startIso) });
       continue;
     }
 
