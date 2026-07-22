@@ -15,9 +15,11 @@
 // `expect(src).not.toContain("sync")` fails on the word "async", which is why
 // the table below matches call sites and globals rather than words.
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+
+import { candidatePageFiles, resolvesToPage } from "../helpers/app-routes";
 
 const ROOT = process.cwd();
 const SRC = readFileSync(path.join(ROOT, "public/sw.js"), "utf8");
@@ -174,8 +176,14 @@ describe.skipIf(IS_KILL_SWITCH)("public/sw.js allowlists", () => {
   // /ferry/plan and a missing /offline automatically: a cached 404 outlives the
   // deploy that caused it, so a dead allowlist entry must be a red build.
   it.each(NAV_ALLOWLIST)("%s resolves to a real page.tsx", (route) => {
-    const rel = route.replace(/^\//, "");
-    const pageFile = path.join(ROOT, "src", "app", rel, "page.tsx");
-    expect(existsSync(pageFile), `${route} → ${pageFile} missing`).toBe(true);
+    // Route-group aware since E22: /eat is served by src/app/(site)/eat/page.tsx
+    // and /kiosk by src/app/(kiosk)/kiosk/page.tsx. Joining the URL straight
+    // onto src/app would now fail for every site route while the worker is
+    // perfectly correct — and, worse, would pass for a route that had been
+    // deleted from a group but left behind at the root.
+    expect(
+      resolvesToPage(route),
+      `${route} matched no page.tsx — looked in:\n  ${candidatePageFiles(route).join("\n  ")}`,
+    ).toBe(true);
   });
 });
