@@ -378,10 +378,36 @@ function buildMatrix(codewords: number[], version: number, ecc: Ecc): QrMatrix {
   };
 }
 
-function alignmentPatternPositions(version: number): number[] {
+/**
+ * Alignment-pattern centres for a version (ISO/IEC 18004 Annex E).
+ *
+ * THE ceil AND THE VERSION-32 CASE ARE BOTH LOAD-BEARING. An earlier draft of
+ * this port used Math.floor here and omitted the special case, which put the
+ * LARGE gap first instead of last and so misplaced every alignment pattern on
+ * 15 of the 40 versions (15, 16, 18, 19, 22, 24, 26, 28, 30, 31, 33, 36, 37,
+ * 39, 40). The symbol still renders as a confident-looking square; a decoder
+ * simply cannot read it, because it looks for the patterns where the spec says
+ * they are and the zig-zag data walk skips a different set of modules than the
+ * decoder does.
+ *
+ * That bug was invisible to everything guarding this file: the pinned test
+ * vectors are versions 2 and 4, and the development round-trip through an
+ * independent decoder topped out at version 11 — all below the first divergent
+ * version. It is reachable in production through any member-supplied URL long
+ * enough to need version 15 (259 bytes at QUARTILE), e.g. a booking link
+ * pasted from an address bar with its full tracking query intact. Hence
+ * tests/unit/qr-encoder.test.ts now checks the positions for ALL 40 versions
+ * structurally, rather than trusting a sample.
+ *
+ * Version 32 is the spec's one genuine anomaly, where the even-spacing rule
+ * does not produce the tabulated value; the reference library special-cases it
+ * and so does this.
+ */
+export function alignmentPatternPositions(version: number): number[] {
   if (version === 1) return [];
   const numAlign = Math.floor(version / 7) + 2;
-  const step = Math.floor((version * 4 + 4) / (numAlign * 2 - 2)) * 2;
+  const step =
+    version === 32 ? 26 : Math.ceil((version * 4 + 4) / (numAlign * 2 - 2)) * 2;
   const result = [6];
   for (let pos = version * 4 + 10; result.length < numAlign; pos -= step) {
     result.splice(1, 0, pos);

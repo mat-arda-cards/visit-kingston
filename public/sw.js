@@ -349,6 +349,18 @@ async function kioskNavigate(event, request, url) {
       // would outlive them switching it back on.
       if (res.status === 200 && !res.redirected && KIOSK_NAV_ALLOWLIST.includes(url.pathname)) {
         saveInBackground(event, KIOSK_CACHE, KIOSK_LIMIT, url.pathname, res.clone());
+      } else if (res.status === 404) {
+        // AND THE OTHER HALF, which stale-while-revalidate needs and
+        // network-first does not: EVICT on a 404.
+        //
+        // Without this the admin off-switch is a no-op on the actual device.
+        // Turning the kiosk off makes /kiosk 404, but this branch would serve
+        // the cached copy first and only "revalidate" behind it — and a
+        // revalidation that declines to store anything leaves the old page in
+        // the cache for ever. The panel would keep showing the directory after
+        // staff had switched it off, with no way to tell from the admin page
+        // that it had not taken. Same for a screen removed from enabledScreens.
+        dropFromCache(event, KIOSK_CACHE, url.pathname);
       }
       return res;
     })
@@ -371,8 +383,18 @@ async function kioskNavigate(event, request, url) {
   // boot at the dock if the venue Wi-Fi is not up yet. Self-contained markup:
   // no nav, no links, nothing to tap, styled to match the kiosk so it does not
   // look like a browser error page to a member of the public.
+  //
+  // THE META REFRESH IS THE POINT, not decoration. This document replaces the
+  // app, so none of KioskShell's recovery runs from here: no heartbeat, no
+  // freshness reload, no self-heal — that JS is in a bundle this response does
+  // not load. Without a refresh the panel sits on this screen for ever once the
+  // network returns, and the only cure is a human power-cycling the mini PC,
+  // which defeats the whole unattended-recovery story in docs/KIOSK-DEPLOY.md.
+  // Ten seconds is frequent enough to look instant to anyone watching and far
+  // too slow to be load on a server that is, by definition, unreachable.
   return new Response(
     `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+      `<meta http-equiv="refresh" content="10">` +
       `<title>Explore Kingston</title></head>` +
       `<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;` +
       `background:#22334d;color:#fff;font:600 2rem/1.4 system-ui,sans-serif;text-align:center">` +
@@ -381,6 +403,23 @@ async function kioskNavigate(event, request, url) {
       `</body></html>`,
     { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
+}
+
+/**
+ * Delete one entry, off the response path. Mirrors saveInBackground's contract:
+ * nothing is awaited by the caller and every failure is swallowed, because an
+ * eviction is bookkeeping and must never change what the visitor sees.
+ */
+function dropFromCache(event, cacheName, key) {
+  const write = caches
+    .open(cacheName)
+    .then((cache) => cache.delete(key))
+    .catch(() => {});
+  try {
+    event.waitUntil(write);
+  } catch {
+    // The event's lifetime already ended; the next navigation will retry.
+  }
 }
 
 /** Cache-first for content-hashed assets and optimizer-served brand imagery. */

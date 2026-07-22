@@ -199,6 +199,35 @@ describe.skipIf(IS_KILL_SWITCH)("public/sw.js allowlists", () => {
     expect(NAV_ALLOWLIST.filter((r) => r.startsWith("/kiosk"))).toEqual([]);
   });
 
+  it("evicts a kiosk page when the server starts answering 404", () => {
+    // Without this the admin off-switch is a no-op ON THE DEVICE. Turning the
+    // kiosk off makes /kiosk 404, but stale-while-revalidate serves the cached
+    // copy first and a revalidation that merely declines to store leaves the
+    // old page in the cache for ever — the panel keeps showing the directory
+    // after staff switched it off, and the admin page gives no hint it did not
+    // take. Network-first (the visitor path) does not need this; SWR does.
+    const start = SRC.indexOf("async function kioskNavigate");
+    const end = SRC.indexOf("\nasync function staticAsset", start);
+    const body = SRC.slice(start, end > start ? end : undefined);
+    expect(body).toMatch(/res\.status\s*===\s*404/);
+    expect(body).toMatch(/dropFromCache\s*\(/);
+    expect(SRC).toMatch(/function dropFromCache/);
+    expect(SRC).toMatch(/cache\.delete\(/);
+  });
+
+  it("gives the kiosk cold-start fallback a way to retry itself", () => {
+    // That document REPLACES the app, so none of KioskShell's recovery runs
+    // from it — no heartbeat, no freshness reload, no self-heal, because that
+    // JS is in a bundle the response does not load. Without a refresh the panel
+    // sits there for ever once the network returns and only a human
+    // power-cycling the mini PC clears it, which defeats the whole
+    // unattended-recovery story the runbook promises.
+    const start = SRC.indexOf("async function kioskNavigate");
+    const end = SRC.indexOf("\nasync function staticAsset", start);
+    const body = SRC.slice(start, end > start ? end : undefined);
+    expect(body).toMatch(/http-equiv="refresh"/);
+  });
+
   it("never falls back to /offline for a kiosk navigation", () => {
     // The fallback lives inside kioskNavigate(); assert that function exists and
     // that it does not reach for the shared offline document.

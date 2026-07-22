@@ -38,6 +38,31 @@ const ATTRACT_PHOTOS = [
 /** Seconds each attract photo holds before cross-fading to the next. */
 const ATTRACT_PHOTO_MS = 8_000;
 
+/** sessionStorage keys. Cleared on browser restart, which --incognito forces. */
+const SESSION_KEY = "vk-kiosk-sid";
+/** Set immediately before a reload the SHELL triggered, so the next page life
+ *  knows nobody walked up — see the beacon effect. */
+const AUTO_RELOAD_KEY = "vk-kiosk-auto";
+
+function markAutomatedReload() {
+  try {
+    sessionStorage.setItem(AUTO_RELOAD_KEY, "1");
+  } catch {
+    // Storage disabled: the worst case is one extra counted screen view.
+  }
+}
+
+/** True exactly once per automated reload; clears itself. */
+function consumeAutomatedReload(): boolean {
+  try {
+    const was = sessionStorage.getItem(AUTO_RELOAD_KEY) === "1";
+    if (was) sessionStorage.removeItem(AUTO_RELOAD_KEY);
+    return was;
+  } catch {
+    return false;
+  }
+}
+
 export function KioskShell({
   idleSeconds,
   adminPreview,
@@ -60,15 +85,56 @@ export function KioskShell({
   const [attract, setAttract] = useState(true);
   const [photo, setPhoto] = useState(0);
   const [degraded, setDegraded] = useState(false);
-  // State, not a ref, and lazily initialised: a ref written during render is a
-  // react-hooks violation, and this genuinely IS state — rotating it on idle
-  // reset is what makes each walk-up a separate session in the kiosk analytics
-  // series rather than one "visitor" that lasts all summer.
-  const [sessionId, setSessionId] = useState(newKioskSessionId);
 
   const lastReloadAt = useRef<number | null>(null);
   const failures = useRef(0);
   const nudgeStep = useRef(0);
+  // A ref, not state — nothing renders it, and as state it dragged the beacon
+  // effect along with it: rotating the id re-ran the effect while `pathname`
+  // was still the PREVIOUS visitor's screen (router.replace has not landed
+  // yet), emitting a phantom pageview for their screen under the next
+  // visitor's id. Lazily initialised from inside effects and handlers only, so
+  // it is never written during render.
+  const sessionIdRef = useRef<string | null>(null);
+
+  /**
+   * The current walk-up's analytics id.
+   *
+   * Persisted in sessionStorage so it SURVIVES A RELOAD. That is what keeps the
+   * kiosk series honest: the shell reloads itself every fifteen idle minutes,
+   * and a fresh id per reload would invent ~96 "walk-ups" a day on a panel
+   * nobody had touched — straight into the figure the Chamber reports to LTAC.
+   * A genuine idle reset rotates it explicitly instead (see the idle effect).
+   */
+  const currentSessionId = useCallback((): string => {
+    if (sessionIdRef.current) return sessionIdRef.current;
+    let id: string | null = null;
+    try {
+      id = sessionStorage.getItem(SESSION_KEY);
+    } catch {
+      // Storage disabled — fall through to a fresh id for this page life.
+    }
+    if (!id) {
+      id = newKioskSessionId();
+      try {
+        sessionStorage.setItem(SESSION_KEY, id);
+      } catch {
+        // Nothing to do; the id still works for this page life.
+      }
+    }
+    sessionIdRef.current = id;
+    return id;
+  }, []);
+
+  const rotateSessionId = useCallback(() => {
+    const id = newKioskSessionId();
+    sessionIdRef.current = id;
+    try {
+      sessionStorage.setItem(SESSION_KEY, id);
+    } catch {
+      // best-effort
+    }
+  }, []);
 
   /* ── self-heal reload, debounced ────────────────────────────────────── */
 
@@ -76,6 +142,9 @@ export function KioskShell({
     const now = Date.now();
     if (!canReload(lastReloadAt.current, now)) return;
     lastReloadAt.current = now;
+    // Tell the next page life this reload was ours, so the beacon does not
+    // count it as somebody walking up to the panel.
+    markAutomatedReload();
     window.location.reload();
   }, []);
 
@@ -84,12 +153,22 @@ export function KioskShell({
   // One screen-view per kiosk navigation, tagged source:"kiosk" so
   // analytics-store can report walk-up use as its own series instead of
   // inflating visitor counts with a device that never leaves.
+  //
+  // Deps are [pathname] and NOT the session id: see sessionIdRef for why that
+  // combination emitted a pageview for the previous visitor's screen.
   useEffect(() => {
     if (!pathname || adminPreview) return;
+    // A reload the SHELL triggered is not a visit. The freshness reload fires
+    // every fifteen idle minutes and self-heal fires on error; counting either
+    // would manufacture screen views — and, with a rotating id, whole
+    // "walk-ups" — on a panel nobody had touched. The kiosk series is a number
+    // the Chamber reports to LTAC, so inventing ~96 visits a day out of a timer
+    // is a reporting problem, not a telemetry nicety.
+    if (consumeAutomatedReload()) return;
     const body = JSON.stringify({
       type: "pageview",
       path: pathname,
-      sessionId,
+      sessionId: currentSessionId(),
       source: "kiosk",
     });
     try {
@@ -105,7 +184,7 @@ export function KioskShell({
     }).catch(() => {
       // best-effort telemetry; a kiosk must never show a network error
     });
-  }, [pathname, adminPreview, sessionId]);
+  }, [pathname, adminPreview, currentSessionId]);
 
   /* ── idle reset ─────────────────────────────────────────────────────── */
 
@@ -115,18 +194,22 @@ export function KioskShell({
       clearTimeout(timer);
       timer = setTimeout(() => {
         // Back to the attract loop AND back to /kiosk, so the next person never
-        // inherits the last one's screen. The session id rotates here: this is
-        // the moment one walk-up ends and the next begins.
-        setSessionId(newKioskSessionId());
+        // inherits the last one's screen. The session id rotates here, and ONLY
+        // here: this is the one moment we know one walk-up ended and the next
+        // will begin. Rotating on reload instead would invent visits.
+        rotateSessionId();
         setAttract(true);
         router.replace("/kiosk");
       }, idleSeconds * 1000);
     };
 
-    const wake = () => {
-      setAttract(false);
-      reset();
-    };
+    // DELIBERATELY ONLY RESETS THE TIMER — it does NOT dismiss the attract
+    // overlay. It used to, and that made the very first touch ambiguous:
+    // pointerdown tore the overlay down, and the pointerup/click that followed
+    // landed on whatever tile happened to be underneath, so a visitor's "wake
+    // it up" tap opened a random screen. The overlay is a full-bleed button and
+    // dismisses itself on its own click, which completes on the overlay.
+    const wake = () => reset();
 
     // pointerdown covers touch and mouse in one listener; keydown is here for
     // the maintenance keyboard someone plugs in at the dock, not for visitors.
@@ -137,7 +220,7 @@ export function KioskShell({
       clearTimeout(timer);
       for (const e of events) window.removeEventListener(e, wake);
     };
-  }, [idleSeconds, router]);
+  }, [idleSeconds, router, rotateSessionId]);
 
   /* ── attract photo rotation ─────────────────────────────────────────── */
 
@@ -229,6 +312,7 @@ export function KioskShell({
     // Only while attract is up, so a reload can never interrupt a reader.
     const id = setInterval(() => {
       lastReloadAt.current = Date.now();
+      markAutomatedReload();
       window.location.reload();
     }, FRESHNESS_RELOAD_MS);
     return () => clearInterval(id);

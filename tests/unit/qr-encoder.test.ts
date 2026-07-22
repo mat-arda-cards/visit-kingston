@@ -20,7 +20,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
-import { encodeQr, Ecc } from "@/lib/qr/qr-encoder";
+import { alignmentPatternPositions, encodeQr, Ecc } from "@/lib/qr/qr-encoder";
 import { qrPath, kioskHandoffUrl } from "@/lib/qr";
 
 /** Stable digest of a symbol's modules, plus the parameters that produced it. */
@@ -102,6 +102,96 @@ describe("QR encoder — deterministic known vectors", () => {
     // photographed off a glossy panel at an angle.
     const m = encodeQr("https://app.explorekingstonwa.com/kiosk", Ecc.LOW);
     expect(m.ecc).toBeGreaterThan(Ecc.LOW);
+  });
+});
+
+describe("alignment patterns — EVERY version, not a sample", () => {
+  // THIS SUITE EXISTS BECAUSE SAMPLING FAILED.
+  //
+  // The first version of this port used Math.floor where the spec needs
+  // Math.ceil, which put the LARGE gap between alignment patterns first instead
+  // of last and misplaced every alignment pattern on 15 of the 40 versions. The
+  // symbol still renders as a confident-looking square that no phone can read.
+  //
+  // Nothing guarding this file could see it: the pinned vectors above are
+  // versions 2 and 4, and the development round-trip through an independent
+  // decoder topped out at version 11 — all below version 15, where the
+  // divergence starts. An adversarial review found it by checking the formula
+  // against the spec instead of testing more inputs.
+  //
+  // So this checks the STRUCTURAL RULE for all 40 versions rather than trusting
+  // a sample: ISO/IEC 18004 Annex E places the centres at 6, then evenly spaced
+  // up to 4*version+10, with any slack taken out of the FIRST gap. Getting
+  // floor/ceil backwards violates exactly that, on every affected version.
+  const VERSIONS = Array.from({ length: 39 }, (_, i) => i + 2); // 2..40
+
+  it.each(VERSIONS)("v%i starts at 6 and ends at 4*version+10", (v) => {
+    const pos = alignmentPatternPositions(v);
+    expect(pos[0]).toBe(6);
+    expect(pos[pos.length - 1]).toBe(v * 4 + 10);
+  });
+
+  it.each(VERSIONS)("v%i has floor(version/7)+2 centres", (v) => {
+    expect(alignmentPatternPositions(v)).toHaveLength(Math.floor(v / 7) + 2);
+  });
+
+  // Version 32 is the spec's one genuine anomaly: its tabulated centres are
+  // [6,34,60,86,112,138], i.e. gaps [28,26,26,26,26] — the LARGE gap first,
+  // the opposite of every other version. That is exactly why the reference
+  // library carries an explicit `version == 32` case instead of a formula, and
+  // why it is excluded from the even-spacing rule rather than "fixed".
+  const SPEC_ANOMALY = 32;
+
+  it.each(VERSIONS.filter((v) => v !== SPEC_ANOMALY))(
+    "v%i is evenly spaced with the SHORT gap first",
+    (v) => {
+      const pos = alignmentPatternPositions(v);
+      if (pos.length < 3) return; // one gap: nothing to compare
+      const gaps = pos.slice(1).map((p, i) => p - pos[i]);
+      const tail = gaps.slice(1);
+      // Every gap after the first is identical...
+      expect(new Set(tail).size, `v${v} tail gaps ${gaps}`).toBe(1);
+      // ...and the first absorbs the slack, so it is never the LARGEST. This is
+      // the single assertion the floor/ceil bug fails.
+      expect(gaps[0], `v${v} gaps ${gaps} — slack must fall in the FIRST gap`).toBeLessThanOrEqual(
+        tail[0],
+      );
+    },
+  );
+
+  it("keeps version 32 on its tabulated anomaly", () => {
+    // Guarded explicitly so the exclusion above cannot quietly hide a
+    // regression: if someone "simplifies" the special case away, ceil gives
+    // [6,36,64,92,120,148] and this fails.
+    const pos = alignmentPatternPositions(SPEC_ANOMALY);
+    const gaps = pos.slice(1).map((p, i) => p - pos[i]);
+    expect(gaps[0]).toBe(28);
+    expect(new Set(gaps.slice(1))).toEqual(new Set([26]));
+  });
+
+  it.each(VERSIONS)("v%i centres are even and strictly increasing", (v) => {
+    const pos = alignmentPatternPositions(v);
+    for (let i = 1; i < pos.length; i++) {
+      expect(pos[i]).toBeGreaterThan(pos[i - 1]);
+      // Every centre after the leading 6 sits on an even coordinate.
+      expect(pos[i] % 2, `v${v} centre ${pos[i]} is odd`).toBe(0);
+    }
+  });
+
+  it("matches the spec table at the versions that were wrong", () => {
+    // Spot values chosen from the set the old formula got wrong, plus the v32
+    // anomaly. EVERY value here was confirmed by round-tripping a real symbol
+    // of that version through jsQR, an independent decoder — not transcribed
+    // from memory. (The first draft of this test asserted [6,30,54,78,102] for
+    // v22 from recall; the decoder says [6,26,50,74,98]. Transcription is
+    // exactly as error-prone as the code it is meant to check, which is why
+    // the structural rules above carry the real weight.)
+    expect(alignmentPatternPositions(15)).toEqual([6, 26, 48, 70]);
+    expect(alignmentPatternPositions(22)).toEqual([6, 26, 50, 74, 98]);
+    expect(alignmentPatternPositions(32)).toEqual([6, 34, 60, 86, 112, 138]);
+    expect(alignmentPatternPositions(40)).toEqual([6, 30, 58, 86, 114, 142, 170]);
+    // And a version that was always correct, as a control.
+    expect(alignmentPatternPositions(7)).toEqual([6, 22, 38]);
   });
 });
 
