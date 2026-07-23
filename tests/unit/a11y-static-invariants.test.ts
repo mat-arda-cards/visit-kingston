@@ -68,7 +68,25 @@ const FROZEN_PX_HOLDOUTS = [
  * The test below re-reads the manifest and fails if either is ever unfrozen
  * without this list being revisited.
  */
-const FERN_TINT_HOLDOUTS = ["src/app/(site)/admin/map/editor.tsx", "src/lib/ferry-forecast.ts"];
+const FERN_TINT_HOLDOUTS = [
+  "src/app/(site)/admin/map/editor.tsx",
+  "src/lib/ferry-forecast.ts",
+];
+
+/**
+ * PRE-LAUNCH THAW (2026-07-22, owner request): while the app is not live, every
+ * path in `.agent-frozen` is temporarily unfrozen (each active entry commented
+ * with a `#THAW#` prefix under a banner). The two "holdouts must stay frozen"
+ * tripwires below cannot hold when nothing is frozen, so they auto-skip while the
+ * banner is present and RE-ARM the instant the manifest is refrozen (banner gone
+ * / PR reverted). The px + fern-tint SWEEPS are unaffected — they exclude the
+ * holdouts via the arrays above, not the manifest — so a11y coverage is unchanged
+ * for every other file.
+ */
+const MANIFEST_THAWED = readFileSync(
+  path.join(REPO_ROOT, ".agent-frozen"),
+  "utf8",
+).includes("PRE-LAUNCH THAW");
 
 /** Arbitrary Tailwind px font size, e.g. the ones swept to rem in E14 slice 1. */
 const ARBITRARY_PX_FONT_RE = /text-\[\d+px\]/;
@@ -101,7 +119,8 @@ const ARBITRARY_PX_FONT_RE = /text-\[\d+px\]/;
 function readPalette(): Record<string, string> {
   const css = readFileSync(path.join(SRC_ROOT, "app", "globals.css"), "utf8");
   const out: Record<string, string> = {};
-  for (const m of css.matchAll(/--color-([a-z-]+):\s*(#[0-9a-fA-F]{6})/g)) out[m[1]] = m[2];
+  for (const m of css.matchAll(/--color-([a-z-]+):\s*(#[0-9a-fA-F]{6})/g))
+    out[m[1]] = m[2];
   return out;
 }
 
@@ -122,7 +141,10 @@ function luminance([r, g, b]: [number, number, number]): number {
   return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
 }
 
-function contrast(a: [number, number, number], b: [number, number, number]): number {
+function contrast(
+  a: [number, number, number],
+  b: [number, number, number],
+): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 }
@@ -133,7 +155,11 @@ function composite(
   alpha: number,
   bg: [number, number, number],
 ): [number, number, number] {
-  return fg.map((c, i) => Math.round(c * alpha + bg[i] * (1 - alpha))) as [number, number, number];
+  return fg.map((c, i) => Math.round(c * alpha + bg[i] * (1 - alpha))) as [
+    number,
+    number,
+    number,
+  ];
 }
 
 const PAGE_BACKDROP: [number, number, number] = [255, 255, 255];
@@ -176,17 +202,24 @@ describe("E14 static a11y invariants", () => {
     ).toEqual([]);
   });
 
-  it("the px exclusions are exactly the frozen-manifest files (no silent widening)", () => {
-    const manifest = readFileSync(path.join(REPO_ROOT, ".agent-frozen"), "utf8")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith("#"));
-    for (const holdout of FROZEN_PX_HOLDOUTS) {
-      expect(manifest, `${holdout} is excluded from the px sweep but is no longer frozen`).toContain(
-        holdout,
-      );
-    }
-  });
+  it.skipIf(MANIFEST_THAWED)(
+    "the px exclusions are exactly the frozen-manifest files (no silent widening)",
+    () => {
+      const manifest = readFileSync(
+        path.join(REPO_ROOT, ".agent-frozen"),
+        "utf8",
+      )
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith("#"));
+      for (const holdout of FROZEN_PX_HOLDOUTS) {
+        expect(
+          manifest,
+          `${holdout} is excluded from the px sweep but is no longer frozen`,
+        ).toContain(holdout);
+      }
+    },
+  );
 
   it("never blocks pinch-zoom anywhere in src/", () => {
     const violations: string[] = [];
@@ -194,7 +227,8 @@ describe("E14 static a11y invariants", () => {
       readFileSync(file, "utf8")
         .split("\n")
         .forEach((line, i) => {
-          if (ZOOM_BLOCK_RE.test(line)) violations.push(`${rel(file)}:${i + 1}: ${line.trim()}`);
+          if (ZOOM_BLOCK_RE.test(line))
+            violations.push(`${rel(file)}:${i + 1}: ${line.trim()}`);
         });
     }
     expect(
@@ -214,9 +248,10 @@ describe("E14 static a11y invariants", () => {
     // green. tests/server/static-rendering.test.ts is the property-level
     // backstop; these three greps are the fast, specific version.
     for (const file of [LAYOUT, SITE_LAYOUT, CHROME]) {
-      expect(readFileSync(file, "utf8"), `${rel(file)} imports next/headers`).not.toMatch(
-        /next\/headers/,
-      );
+      expect(
+        readFileSync(file, "utf8"),
+        `${rel(file)} imports next/headers`,
+      ).not.toMatch(/next\/headers/);
     }
   });
 
@@ -229,7 +264,9 @@ describe("E14 static a11y invariants", () => {
     expect(chrome).toContain('href="#main"');
     expect(chrome).toContain('id="main"');
     // The skip link must precede the nav so it is the first thing Tab reaches.
-    expect(chrome.indexOf('href="#main"')).toBeLessThan(chrome.indexOf("<SiteNav"));
+    expect(chrome.indexOf('href="#main"')).toBeLessThan(
+      chrome.indexOf("<SiteNav"),
+    );
     // …and the target must be focusable, or Safari/iOS VoiceOver scroll to it
     // without MOVING focus and the next Tab returns to the top of the header.
     expect(chrome).toMatch(/id="main"\s+tabIndex=\{-1\}/);
@@ -242,9 +279,14 @@ describe("E14 static a11y invariants", () => {
     // the rule silently stops applying and the legend goes back to 4.49:1 with
     // nothing failing. Assert BOTH halves of the coupling.
     const css = readFileSync(path.join(SRC_ROOT, "app", "globals.css"), "utf8");
-    const map = readFileSync(path.join(SRC_ROOT, "components", "feature-map.tsx"), "utf8");
+    const map = readFileSync(
+      path.join(SRC_ROOT, "components", "feature-map.tsx"),
+      "utf8",
+    );
     expect(css).toContain("ul.max-h-28.overflow-y-auto.text-ink-soft");
-    expect(map).toContain("max-h-28 flex-wrap gap-x-4 gap-y-2 overflow-y-auto text-sm text-ink-soft");
+    expect(map).toContain(
+      "max-h-28 flex-wrap gap-x-4 gap-y-2 overflow-y-auto text-sm text-ink-soft",
+    );
     expect(css).toContain(".bg-shell\\/60.text-ink-soft");
     expect(map).toContain("bg-shell/60 text-sm text-ink-soft");
   });
@@ -266,15 +308,26 @@ describe("E14 static a11y invariants", () => {
           const trimmed = line.trim();
           // Same self-trip hazard the fern rule documents: this file and the
           // repairs in src/ both quote the patterns they forbid.
-          if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
+          if (
+            trimmed.startsWith("//") ||
+            trimmed.startsWith("*") ||
+            trimmed.startsWith("/*")
+          ) {
             return;
           }
           for (const bgName of names) {
-            const tint = line.match(new RegExp(`bg-${bgName}\\/(\\d{1,3})(?![\\w-])`));
+            const tint = line.match(
+              new RegExp(`bg-${bgName}\\/(\\d{1,3})(?![\\w-])`),
+            );
             if (!tint) continue;
-            const bg = composite(toRgb(palette[bgName]), Number(tint[1]) / 100, PAGE_BACKDROP);
+            const bg = composite(
+              toRgb(palette[bgName]),
+              Number(tint[1]) / 100,
+              PAGE_BACKDROP,
+            );
             for (const textName of names) {
-              if (!new RegExp(`text-${textName}(?![\\w-])`).test(line)) continue;
+              if (!new RegExp(`text-${textName}(?![\\w-])`).test(line))
+                continue;
               const ratio = contrast(toRgb(palette[textName]), bg);
               if (ratio < AA_NORMAL) {
                 violations.push(
@@ -328,19 +381,27 @@ describe("E14 static a11y invariants", () => {
     ).toEqual([]);
   });
 
-  it("the fern-tint exclusions are exactly the frozen-manifest files", () => {
-    // Same no-silent-widening rule as the px sweep above: these two are skipped
-    // ONLY because no agent may edit them. If either is unfrozen, fix the
-    // classes there and drop it from the list.
-    const manifest = readFileSync(path.join(REPO_ROOT, ".agent-frozen"), "utf8")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith("#"));
-    for (const holdout of FERN_TINT_HOLDOUTS) {
-      expect(manifest, `${holdout} is excluded from the fern-tint sweep but is no longer frozen`)
-        .toContain(holdout);
-    }
-  });
+  it.skipIf(MANIFEST_THAWED)(
+    "the fern-tint exclusions are exactly the frozen-manifest files",
+    () => {
+      // Same no-silent-widening rule as the px sweep above: these two are skipped
+      // ONLY because no agent may edit them. If either is unfrozen, fix the
+      // classes there and drop it from the list.
+      const manifest = readFileSync(
+        path.join(REPO_ROOT, ".agent-frozen"),
+        "utf8",
+      )
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith("#"));
+      for (const holdout of FERN_TINT_HOLDOUTS) {
+        expect(
+          manifest,
+          `${holdout} is excluded from the fern-tint sweep but is no longer frozen`,
+        ).toContain(holdout);
+      }
+    },
+  );
 
   it("keeps the frozen forecast module's chip override wired to its consumers", () => {
     // LEVELS.light.chip in the frozen src/lib/ferry-forecast.ts is the failing
@@ -349,18 +410,31 @@ describe("E14 static a11y invariants", () => {
     // feature-map coupling above: if the frozen file is ever repaired upstream
     // the override becomes dead code, and if a consumer goes back to
     // interpolating meta.chip directly the failure returns silently.
-    const forecast = readFileSync(path.join(SRC_ROOT, "lib", "ferry-forecast.ts"), "utf8");
+    const forecast = readFileSync(
+      path.join(SRC_ROOT, "lib", "ferry-forecast.ts"),
+      "utf8",
+    );
     expect(forecast).toContain('chip: "bg-fern/10 text-fern"');
 
     for (const consumer of [
-      path.join(SRC_ROOT, "app", "(site)", "ferry", "plan", "ferry-planner.tsx"),
+      path.join(
+        SRC_ROOT,
+        "app",
+        "(site)",
+        "ferry",
+        "plan",
+        "ferry-planner.tsx",
+      ),
       path.join(SRC_ROOT, "components", "ferry-busy-today.tsx"),
     ]) {
       const src = readFileSync(consumer, "utf8");
-      expect(src, `${rel(consumer)} must route the chip through chipClass()`).toMatch(
-        /\$\{chipClass\(meta\)\}/,
+      expect(
+        src,
+        `${rel(consumer)} must route the chip through chipClass()`,
+      ).toMatch(/\$\{chipClass\(meta\)\}/);
+      expect(src, `${rel(consumer)} still renders meta.chip raw`).not.toMatch(
+        /\$\{meta\.chip\}/,
       );
-      expect(src, `${rel(consumer)} still renders meta.chip raw`).not.toMatch(/\$\{meta\.chip\}/);
     }
   });
 
@@ -375,10 +449,14 @@ describe("E14 static a11y invariants", () => {
     // meta.hex is still CORRECT for the dashed rule and the marker dot — they
     // carry no text, so no 1.4.3 obligation. Only the <rect> behind the label
     // is constrained, so the assertion is scoped to <rect> lines specifically.
-    const trendline = readFileSync(path.join(SRC_ROOT, "components", "ferry-trendline.tsx"), "utf8");
-    expect(trendline, "the chip rect must take its fill from chipFillHex()").toContain(
-      "fill={chipFillHex(meta)}",
+    const trendline = readFileSync(
+      path.join(SRC_ROOT, "components", "ferry-trendline.tsx"),
+      "utf8",
     );
+    expect(
+      trendline,
+      "the chip rect must take its fill from chipFillHex()",
+    ).toContain("fill={chipFillHex(meta)}");
     const rectWithRawHex = trendline
       .split("\n")
       .map((line, i) => [line, i + 1] as const)
@@ -408,7 +486,10 @@ describe("E14 static a11y invariants", () => {
     // Seeding it makes the guarantee structural: a restored backup, a wiped
     // store, or a fresh environment now carries the alternative by default.
     const parking = mapViews.find((v) => v.id === PARKING_VIEW_ID);
-    expect(parking, `no "${PARKING_VIEW_ID}" seed view — /parking resolves it by id`).toBeDefined();
+    expect(
+      parking,
+      `no "${PARKING_VIEW_ID}" seed view — /parking resolves it by id`,
+    ).toBeDefined();
     expect(
       parking!.sources,
       `/parking's "Every lot, in words" text alternative (M-14-04) renders only when ` +
@@ -432,8 +513,14 @@ describe("E14 static a11y invariants", () => {
     // the stores (and therefore a database) at import time. Comparing the
     // source text is the same move parking-labels.test.ts makes against the
     // frozen map component, for the same reason.
-    const resolver = readFileSync(path.join(SRC_ROOT, "lib", "map", "resolve.ts"), "utf8");
-    const page = readFileSync(path.join(SRC_ROOT, "app", "(site)", "parking", "page.tsx"), "utf8");
+    const resolver = readFileSync(
+      path.join(SRC_ROOT, "lib", "map", "resolve.ts"),
+      "utf8",
+    );
+    const page = readFileSync(
+      path.join(SRC_ROOT, "app", "(site)", "parking", "page.tsx"),
+      "utf8",
+    );
 
     // Parse the literals out rather than string-matching a whole expression.
     // The two existing coupling tests in this file match exact class strings,
@@ -441,7 +528,9 @@ describe("E14 static a11y invariants", () => {
     // NOT frozen, so it will get reformatted and refactored. Matching the parsed
     // literal survives a Prettier re-wrap or a switch to a Set, and still fails
     // on the one thing that actually breaks the page: the string changing.
-    const gatedSources = [...resolver.matchAll(/sources\.includes\("([^"]+)"\)/g)].map((m) => m[1]);
+    const gatedSources = [
+      ...resolver.matchAll(/sources\.includes\("([^"]+)"\)/g),
+    ].map((m) => m[1]);
     expect(
       gatedSources,
       `resolve.ts no longer gates any branch on "${PARKING_ZONES_SOURCE}" (it gates on: ` +
@@ -452,7 +541,9 @@ describe("E14 static a11y invariants", () => {
 
     // The other half of the chain: the key the resolver writes has to be the key
     // the page reads. Rename it at either end and the list empties in silence.
-    const assignedBuiltins = [...resolver.matchAll(/builtins\.(\w+)\s*=/g)].map((m) => m[1]);
+    const assignedBuiltins = [...resolver.matchAll(/builtins\.(\w+)\s*=/g)].map(
+      (m) => m[1],
+    );
     expect(
       assignedBuiltins,
       `resolve.ts no longer assigns builtins.${PARKING_ZONES_BUILTIN} (it assigns: ` +
