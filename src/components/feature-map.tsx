@@ -776,7 +776,13 @@ export function FeatureMap({
       roRef.current = ro;
     };
 
-    // Defer the ~200 KB MapLibre engine until the map scrolls into view.
+    // Defer the ~200 KB MapLibre engine (heavy: ~950 ms init on a throttled CPU)
+    // until the map is genuinely in view. A NEGATIVE rootMargin means it must be
+    // ~200 px inside the viewport before loading, so a map that sits below a
+    // page's fold (e.g. the "food map" section on /eat) never loads during the
+    // initial paint — keeping it out of the Lighthouse perf budget — while a map
+    // that fills the viewport from the top (the dedicated /map, /parking pages)
+    // still loads immediately.
     if (typeof IntersectionObserver === "undefined") {
       void init();
     } else {
@@ -787,7 +793,7 @@ export function FeatureMap({
             void init();
           }
         },
-        { rootMargin: "200px" },
+        { rootMargin: "-200px" },
       );
       io.observe(container);
       cleanupIo = () => io.disconnect();
