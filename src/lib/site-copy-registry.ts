@@ -32,7 +32,7 @@ export const COPY_BLOCKS = [
     key: "home.hero.eyebrow",
     page: "Home",
     label: "Hero eyebrow",
-    fallback: "Gateway to the Peninsula",
+    fallback: "Gateway to the Peninsula (workflow smoke test — safe to close)",
   },
   {
     key: "home.hero.title1",
