@@ -1,3 +1,11 @@
+# ===== PRE-LAUNCH THAW (2026-07-22, owner request) =====
+# The app is not live yet, so every frozen path below is TEMPORARILY unfrozen.
+# Each active entry is prefixed with '#THAW#', so both enforcers (PreToolUse hook
+# + CI check-frozen) parse it as a comment and the manifest reads as empty.
+# REFREEZE when the owner says so: strip the '#THAW# ' prefixes + delete this
+# banner (refreeze-frozen.mjs), or `git restore .agent-frozen` / `git revert` the PR.
+# =======================================================================
+
 # .agent-frozen — files agents must NOT modify without explicit human approval.
 #
 # Enforced two ways (E02, decisions §6b):
@@ -15,16 +23,16 @@
 # json-store.ts UNFROZEN by E05 (P1-E05 plan step 2, the chartered rewrite epic):
 # it becomes a thin delegate over src/lib/db/records.ts; the records-parity
 # suite carries the old characterization guarantees forward.
-src/lib/hours.ts
-src/lib/ferry-forecast.ts
-src/lib/wsf.ts
-src/lib/ferry-reminder.ts
-src/lib/ferry-line.ts
-src/lib/time.ts
+#THAW# src/lib/hours.ts
+#THAW# src/lib/ferry-forecast.ts
+#THAW# src/lib/wsf.ts
+#THAW# src/lib/ferry-reminder.ts
+#THAW# src/lib/ferry-line.ts
+#THAW# src/lib/time.ts
 
 # --- Production data pipelines (NOT CI; scheduled crons) ---
-.github/workflows/ferry-observe.yml
-.github/workflows/ferry-accuracy.yml
+#THAW# .github/workflows/ferry-observe.yml
+#THAW# .github/workflows/ferry-accuracy.yml
 
 # --- Audit-flagged monoliths (high blast radius; touch only with a chartered epic) ---
 # E22 moved the two geoman editors into the (site) route group. Pure `git mv`
@@ -33,6 +41,6 @@ src/lib/time.ts
 # itself still trips check-frozen (a rename puts BOTH the old and the new path
 # in the changed set), which is why the E22 refactor PR carries the
 # 'frozen-change-approved' label: the label attests to the rename, not to an edit.
-src/components/feature-map.tsx
-src/app/(site)/admin/map/editor.tsx
-src/app/(site)/admin/maps/editor.tsx
+#THAW# src/components/feature-map.tsx
+#THAW# src/app/(site)/admin/map/editor.tsx
+#THAW# src/app/(site)/admin/maps/editor.tsx
