@@ -109,7 +109,11 @@ export function Sr104TrafficMap({ height = "420px" }: { height?: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let cleanupIo: (() => void) | undefined;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const init = async () => {
       const maplibregl = await loadMapLibre();
       if (cancelled || !containerRef.current || mapRef.current) return;
 
@@ -171,10 +175,31 @@ export function Sr104TrafficMap({ height = "420px" }: { height?: string }) {
       const ro = new ResizeObserver(() => mapRef.current?.resize());
       ro.observe(containerRef.current);
       resizeObsRef.current = ro;
-    })();
+    };
+
+    // Defer the ~200 KB MapLibre engine until the map scrolls into view, so it
+    // stays off the initial-load critical path (the E15 Lighthouse perf budget).
+    // Loads ~200px early for a seamless scroll; a viewer who never reaches the
+    // map — including Lighthouse, which does not scroll — never pays for it.
+    if (typeof IntersectionObserver === "undefined") {
+      void init();
+    } else {
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            io.disconnect();
+            void init();
+          }
+        },
+        { rootMargin: "200px" },
+      );
+      io.observe(container);
+      cleanupIo = () => io.disconnect();
+    }
 
     return () => {
       cancelled = true;
+      cleanupIo?.();
       resizeObsRef.current?.disconnect();
       resizeObsRef.current = null;
       mapRef.current?.remove();
